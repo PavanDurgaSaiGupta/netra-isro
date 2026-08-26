@@ -95,14 +95,14 @@ const SatelliteContext = createContext<SatelliteContextType | undefined>(undefin
 
 export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [rawCatalog, setRawCatalog] = useState<any[]>(SEED_CATALOG)
-  const [loading, setLoading] = useState(true)
+  const [loading] = useState(false)
   const [selectedSat, setSelectedSatState] = useState<SatelliteItem | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterRegime, setFilterRegime] = useState<'ALL' | 'ISRO' | 'DEBRIS' | 'LEO' | 'MEO' | 'GEO'>('ALL')
   const [issData, setIssData] = useState<ISSData | null>(null)
   const [alerts, setAlerts] = useState<AlertLogItem[]>(INITIAL_ALERTS)
   const [, setTick] = useState(0)
-  const [apiStatus, setApiStatus] = useState<'ONLINE' | 'SYNCING' | 'STANDBY'>('SYNCING')
+  const [apiStatus, setApiStatus] = useState<'ONLINE' | 'SYNCING' | 'STANDBY'>('ONLINE')
   const [lastSyncTime, setLastSyncTime] = useState('JUST NOW')
   const [recenterTrigger, setRecenterTrigger] = useState(0)
   const [resetViewTrigger, setResetViewTrigger] = useState(0)
@@ -114,7 +114,6 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }
 
   const loadData = async () => {
-    setApiStatus('SYNCING')
     try {
       const live = await fetchLiveCelesTrak()
       if (live.length > 0) {
@@ -127,8 +126,6 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       )
     } catch {
       setApiStatus('STANDBY')
-    } finally {
-      setLoading(false)
     }
   }
 

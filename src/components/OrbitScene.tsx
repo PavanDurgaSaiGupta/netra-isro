@@ -56,12 +56,28 @@ function GroundStationBeam() {
 
 /* ---------- Centered 3D Earth Globe with Photorealistic Atmosphere ---------- */
 
+function EarthFallback() {
+  return (
+    <group>
+      <mesh>
+        <sphereGeometry args={[R_EARTH, 32, 32]} />
+        <meshStandardMaterial color="#0c1a2e" roughness={0.7} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[R_EARTH * 1.002, 24, 24]} />
+        <meshBasicMaterial color="#00f0ff" wireframe transparent opacity={0.2} />
+      </mesh>
+    </group>
+  )
+}
+
 function Earth({ stage }: { stage: number }) {
+  const base = import.meta.env.BASE_URL
   const [day, normal, specular, clouds] = useLoader(TextureLoader, [
-    '/textures/earth-day.jpg',
-    '/textures/earth-normal.jpg',
-    '/textures/earth-specular.jpg',
-    '/textures/earth-clouds.png',
+    `${base}textures/earth-day.jpg`,
+    `${base}textures/earth-normal.jpg`,
+    `${base}textures/earth-specular.jpg`,
+    `${base}textures/earth-clouds.png`,
   ])
   day.colorSpace = THREE.SRGBColorSpace
   for (const t of [day, normal, specular]) t.anisotropy = 8
@@ -596,7 +612,7 @@ export default function OrbitScene() {
         />
         <pointLight position={[-6, -3, -4]} intensity={0.45} color="#00f0ff" />
 
-        <Suspense fallback={null}>
+        <Suspense fallback={<EarthFallback />}>
           {/* Centered Earth Globe */}
           <Earth stage={loadingStage} />
 

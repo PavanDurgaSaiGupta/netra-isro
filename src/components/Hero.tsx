@@ -44,7 +44,7 @@ export default function Hero() {
       {/* Photorealistic Authentic Earth Imagery Backdrop */}
       <div className="hero__earth-backdrop">
         <img
-          src="/earth_orbit_cinematic.jpg"
+          src={`${import.meta.env.BASE_URL}earth_orbit_cinematic.jpg`}
           alt="Planet Earth from orbit showing the Indian subcontinent and atmospheric blue corona"
           className="hero__earth-img"
         />
