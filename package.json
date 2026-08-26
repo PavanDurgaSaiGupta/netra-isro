@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "predeploy": "npm run build && node -e \"const fs=require('fs'); fs.copyFileSync('dist/index.html', 'dist/404.html');\"",
+    "deploy": "gh-pages -d dist",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -30,6 +32,7 @@
     "@types/react-dom": "^19.2.4",
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^6.1.0",
+    "gh-pages": "^6.3.0",
     "oxlint": "^1.79.0",
     "playwright": "^1.62.1",
     "tailwindcss": "^4.3.3",
