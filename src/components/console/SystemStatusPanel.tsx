@@ -1,0 +1,137 @@
+import { useEffect, useRef, useState } from 'react'
+import gsap from 'gsap'
+import { playBlip, playLockSound } from '../../utils/audio'
+
+interface Subsystem {
+  id: string
+  name: string
+  subcode: string
+  status: 'nominal' | 'degraded' | 'calibrating'
+  statusText: string
+}
+
+const INITIAL_SUBSYSTEMS: Subsystem[] = [
+  { id: 'rad', name: 'TRACKING RADAR', subcode: 'RAD-01A', status: 'nominal', statusText: 'ACTIVE' },
+  { id: 'tel', name: 'TELEMETRY LINK', subcode: 'TLM-XBD', status: 'nominal', statusText: 'LOCKED' },
+  { id: 'col', name: 'COLLISION PREDICTOR', subcode: 'SGP4-DSS', status: 'nominal', statusText: 'OPTIMAL' },
+  { id: 'gnd', name: 'GROUND STATION SYNC', subcode: 'BLR-04', status: 'nominal', statusText: 'SYNCED' },
+  { id: 'pwr', name: 'POWER SYSTEMS', subcode: 'BUS-28V', status: 'nominal', statusText: 'NOMINAL' },
+  { id: 'com', name: 'COMMS ARRAY', subcode: 'S-BAND', status: 'nominal', statusText: 'TRANSMITTING' },
+]
+
+export default function SystemStatusPanel() {
+  const [subsystems, setSubsystems] = useState<Subsystem[]>(INITIAL_SUBSYSTEMS)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Stagger reveal on mount
+  useEffect(() => {
+    if (!panelRef.current) return
+    const rows = panelRef.current.querySelectorAll('.sys-panel__row')
+    gsap.fromTo(
+      rows,
+      { opacity: 0, x: 12 },
+      { opacity: 1, x: 0, duration: 0.5, stagger: 0.09, ease: 'power2.out' }
+    )
+  }, [])
+
+  // Manual subsystem diagnostics on row click
+  const handleTestSubsystem = (id: string) => {
+    playBlip(1400, 0.03)
+    setSubsystems((prev) =>
+      prev.map((sub) => (sub.id === id ? { ...sub, status: 'calibrating', statusText: 'PINGING...' } : sub))
+    )
+
+    setTimeout(() => {
+      playLockSound()
+      setSubsystems((prev) =>
+        prev.map((sub) =>
+          sub.id === id ? { ...sub, status: 'nominal', statusText: 'VERIFIED ✓' } : sub
+        )
+      )
+    }, 1200)
+  }
+
+  // Periodic autonomous health calibration
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const targetIdx = Math.floor(Math.random() * INITIAL_SUBSYSTEMS.length)
+
+      setSubsystems((prev) =>
+        prev.map((sub, i) =>
+          i === targetIdx
+            ? { ...sub, status: 'degraded', statusText: 'CALIBRATING' }
+            : { ...sub, status: 'nominal', statusText: INITIAL_SUBSYSTEMS[i].statusText }
+        )
+      )
+
+      setTimeout(() => {
+        setSubsystems((prev) =>
+          prev.map((sub, i) =>
+            i === targetIdx
+              ? { ...sub, status: 'nominal', statusText: INITIAL_SUBSYSTEMS[i].statusText }
+              : sub
+          )
+        )
+      }, 2400)
+    }, 9500)
+
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <div className="sys-panel" ref={panelRef} aria-label="ISRO Subsystems Telemetry Status">
+      <div className="sys-panel__header hud-text">
+        <div className="sys-panel__title-wrap">
+          <span className="sys-panel__badge-dot" />
+          <span className="sys-panel__title">SUBSYSTEM TELEMETRY</span>
+        </div>
+        <span className="sys-panel__overall hud__dim">6/6 ONLINE</span>
+      </div>
+
+      <div className="sys-panel__rows">
+        {subsystems.map((sub) => {
+          const isDegraded = sub.status === 'degraded'
+          const isCalibrating = sub.status === 'calibrating'
+          return (
+            <div
+              key={sub.id}
+              className={`sys-panel__row sys-panel__row--interactive ${
+                isDegraded ? 'sys-panel__row--degraded' : isCalibrating ? 'sys-panel__row--calibrating' : ''
+              }`}
+              onClick={() => handleTestSubsystem(sub.id)}
+              title={`Click to run diagnostic test on ${sub.name}`}
+            >
+              <div className="sys-panel__row-left">
+                <span
+                  className={`sys-panel__dot ${
+                    isDegraded
+                      ? 'sys-panel__dot--degraded'
+                      : isCalibrating
+                      ? 'sys-panel__dot--calibrating'
+                      : 'sys-panel__dot--nominal'
+                  }`}
+                />
+                <span className="sys-panel__name">{sub.name}</span>
+              </div>
+              <div className="sys-panel__row-right hud-text">
+                <span className="sys-panel__code hud__faint">{sub.subcode}</span>
+                <span
+                  className={`sys-panel__status-val ${
+                    isDegraded ? 'sys-panel__status-val--degraded' : isCalibrating ? 'sys-panel__status-val--calibrating' : ''
+                  }`}
+                >
+                  {sub.statusText}
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="sys-panel__footer hud-text hud__faint">
+        <span>CLICK ANY ROW TO RUN DIAGNOSTIC</span>
+        <span>RATE: 10 HZ</span>
+      </div>
+    </div>
+  )
+}
