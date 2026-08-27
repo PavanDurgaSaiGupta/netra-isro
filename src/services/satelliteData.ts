@@ -317,9 +317,11 @@ export async function fetchLiveCelesTrak(): Promise<Array<(typeof SEED_CATALOG)[
   }
 
   try {
-    // Attempt CelesTrak Active Satellite fetch
-    const res = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=json', {
-      signal: AbortSignal.timeout(4000),
+    // Attempt CelesTrak Active Satellite fetch via CORS proxy to prevent browser 403 errors
+    const targetUrl = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=json'
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
+    const res = await fetch(proxyUrl, {
+      signal: AbortSignal.timeout(3500),
     })
 
     if (res.ok) {

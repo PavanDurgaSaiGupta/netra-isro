@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSatellites } from '../context/SatelliteContext'
 import OrbitScene from '../components/OrbitScene'
 import SystemStatusPanel from '../components/console/SystemStatusPanel'
@@ -9,6 +9,8 @@ import { playBlip, playLockSound } from '../utils/audio'
 import type { SatelliteItem } from '../services/satelliteData'
 
 const REGIMES = ['ALL', 'ISRO', 'DEBRIS', 'LEO', 'GEO'] as const
+
+type MobilePanel = 'none' | 'search' | 'telemetry' | 'radar' | 'status'
 
 export default function LiveTrackingView() {
   const {
@@ -26,11 +28,26 @@ export default function LiveTrackingView() {
   } = useSatellites()
 
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>('none')
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Detect small screens
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // Handle clicking or pressing Enter on a search result
   const handleSelectSatellite = (sat: SatelliteItem) => {
     playLockSound()
     setSelectedSat(sat)
+    if (isMobile) {
+      setMobilePanel('none')
+    }
   }
 
   // Keyboard navigation inside search input
@@ -53,7 +70,13 @@ export default function LiveTrackingView() {
       }
     } else if (e.key === 'Escape') {
       setSearchQuery('')
+      if (isMobile) setMobilePanel('none')
     }
+  }
+
+  const toggleMobilePanel = (panel: MobilePanel) => {
+    playBlip(1100, 0.02)
+    setMobilePanel((curr) => (curr === panel ? 'none' : panel))
   }
 
   return (
@@ -63,15 +86,79 @@ export default function LiveTrackingView() {
         <OrbitScene />
       </div>
 
-      {/* Search and Quick Filters HUD (Top-Left) */}
-      <div className="tracking-view__controls hud-text">
+      {/* Mobile Backdrop when a HUD modal is open */}
+      {isMobile && mobilePanel !== 'none' && (
+        <div
+          className="tracking-view__mobile-backdrop"
+          onClick={() => setMobilePanel('none')}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Mobile Tactical Floating Action Bar (< 1024px) */}
+      <div className="tracking-view__mobile-hud-tray hud-text">
+        <button
+          type="button"
+          className={`tracking-view__hud-btn ${mobilePanel === 'search' ? 'tracking-view__hud-btn--active' : ''}`}
+          onClick={() => toggleMobilePanel('search')}
+          title="Toggle Search & Filters"
+        >
+          ⌕ SEARCH
+        </button>
+        <button
+          type="button"
+          className={`tracking-view__hud-btn ${mobilePanel === 'telemetry' ? 'tracking-view__hud-btn--active' : ''}`}
+          onClick={() => toggleMobilePanel('telemetry')}
+          title="Toggle Telemetry Panel"
+        >
+          ⚡ TELEMETRY
+        </button>
+        <button
+          type="button"
+          className={`tracking-view__hud-btn ${mobilePanel === 'radar' ? 'tracking-view__hud-btn--active' : ''}`}
+          onClick={() => toggleMobilePanel('radar')}
+          title="Toggle Overhead Radar"
+        >
+          📡 RADAR
+        </button>
+        <button
+          type="button"
+          className={`tracking-view__hud-btn ${mobilePanel === 'status' ? 'tracking-view__hud-btn--active' : ''}`}
+          onClick={() => toggleMobilePanel('status')}
+          title="Toggle Sensor Grid Status"
+        >
+          ⚙ STATUS
+        </button>
+      </div>
+
+      {/* Search and Quick Filters HUD (Top-Left on Desktop, Drawer on Mobile) */}
+      <div
+        className={`tracking-view__controls hud-text ${
+          isMobile
+            ? mobilePanel === 'search'
+              ? 'tracking-view__panel--mobile-open'
+              : 'tracking-view__panel--mobile-hidden'
+            : ''
+        }`}
+      >
+        <div className="tracking-view__panel-mobile-header">
+          <span>⌕ SATELLITE SEARCH & REGIMES</span>
+          <button
+            type="button"
+            className="tracking-view__panel-mobile-close"
+            onClick={() => setMobilePanel('none')}
+          >
+            ✕
+          </button>
+        </div>
+
         <div className="tracking-view__search-wrapper">
           <div className="tracking-view__search-box">
             <span className="tracking-view__search-icon">⌕</span>
             <input
               type="text"
               className="tracking-view__search-input"
-              placeholder="SEARCH SATELLITE / NORAD / ISRO (PRESS ↵)..."
+              placeholder="SEARCH SATELLITE / NORAD / ISRO..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value)
@@ -186,7 +273,25 @@ export default function LiveTrackingView() {
       </div>
 
       {/* Top-Right Sensor & API Status Panel Overlay */}
-      <div className="tracking-view__top-right-overlay">
+      <div
+        className={`tracking-view__top-right-overlay ${
+          isMobile
+            ? mobilePanel === 'status'
+              ? 'tracking-view__panel--mobile-open'
+              : 'tracking-view__panel--mobile-hidden'
+            : ''
+        }`}
+      >
+        <div className="tracking-view__panel-mobile-header">
+          <span>⚙ SENSOR & SGP4 STATUS</span>
+          <button
+            type="button"
+            className="tracking-view__panel-mobile-close"
+            onClick={() => setMobilePanel('none')}
+          >
+            ✕
+          </button>
+        </div>
         <div className="tracking-view__api-badge hud-text">
           <span className="tracking-view__api-dot" />
           <span>API: CELESTRAK / SGP4 ({apiStatus})</span>
@@ -195,18 +300,55 @@ export default function LiveTrackingView() {
         <SystemStatusPanel />
       </div>
 
-      {/* Telemetry Readout (Bottom-Left overlay) */}
-      <div className="tracking-view__bottom-left-overlay">
+      {/* Telemetry Readout Overlay (Bottom-Left on Desktop, Drawer on Mobile) */}
+      <div
+        className={`tracking-view__bottom-left-overlay ${
+          isMobile
+            ? mobilePanel === 'telemetry'
+              ? 'tracking-view__panel--mobile-open'
+              : 'tracking-view__panel--mobile-hidden'
+            : ''
+        }`}
+      >
+        <div className="tracking-view__panel-mobile-header">
+          <span>⚡ LIVE TELEMETRY</span>
+          <button
+            type="button"
+            className="tracking-view__panel-mobile-close"
+            onClick={() => setMobilePanel('none')}
+          >
+            ✕
+          </button>
+        </div>
         <TelemetryReadout />
       </div>
 
-      {/* Overhead Radar (Bottom-Right overlay) */}
-      <div className="tracking-view__bottom-right-overlay">
+      {/* Overhead Radar Overlay (Bottom-Right on Desktop, Drawer on Mobile) */}
+      <div
+        className={`tracking-view__bottom-right-overlay ${
+          isMobile
+            ? mobilePanel === 'radar'
+              ? 'tracking-view__panel--mobile-open'
+              : 'tracking-view__panel--mobile-hidden'
+            : ''
+        }`}
+      >
+        <div className="tracking-view__panel-mobile-header">
+          <span>📡 ISTRAC RADAR HORIZON</span>
+          <button
+            type="button"
+            className="tracking-view__panel-mobile-close"
+            onClick={() => setMobilePanel('none')}
+          >
+            ✕
+          </button>
+        </div>
         <OverheadRadar
           satellites={satellites}
           onSelectSat={(sat) => {
             playLockSound()
             setSelectedSat(sat)
+            if (isMobile) setMobilePanel('none')
           }}
         />
       </div>
@@ -226,7 +368,7 @@ export default function LiveTrackingView() {
               }}
               title="Release camera lock and re-center the Earth"
             >
-              ⊙ RESET VIEW / CENTER EARTH
+              ⊙ CENTER EARTH
             </button>
           </div>
         ) : (

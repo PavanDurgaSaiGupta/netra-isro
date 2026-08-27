@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { playBlip } from '../../utils/audio'
 
@@ -79,71 +80,118 @@ const NAV_ITEMS: NavItem[] = [
   },
 ]
 
-export default function Sidebar() {
+interface SidebarProps {
+  mobileOpen?: boolean
+  onCloseMobile?: () => void
+}
+
+export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const location = useLocation()
   const isCockpit = location.pathname === '/tracking'
 
+  // Close mobile sidebar on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && mobileOpen) {
+        onCloseMobile?.()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [mobileOpen, onCloseMobile])
+
+  const handleLinkClick = () => {
+    playBlip(1200, 0.02)
+    onCloseMobile?.()
+  }
+
   return (
-    <aside
-      className={`app-sidebar ${isCockpit ? 'app-sidebar--compact' : ''}`}
-      aria-label="Main Application Navigation"
-    >
-      {/* Brand Header */}
-      <div className="app-sidebar__brand">
-        <div className="app-sidebar__logo">
-          <span className="app-sidebar__diamond">◆</span>
-          <div className="app-sidebar__brand-text">
-            <div className="app-sidebar__title">NETRA / नेत्रा</div>
-            <div className="app-sidebar__subtitle hud-text">ISRO DSSAM OPERATIONS</div>
-          </div>
-        </div>
-        <div className="app-sidebar__badge hud-text">
-          <span className="app-sidebar__status-dot" />
-          <span className="app-sidebar__badge-label">DSSAM LIVE</span>
-        </div>
-      </div>
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {mobileOpen && (
+        <div
+          className="app-sidebar__backdrop"
+          onClick={onCloseMobile}
+          aria-hidden="true"
+        />
+      )}
 
-      {/* Nav Menu */}
-      <nav className="app-sidebar__nav">
-        {NAV_ITEMS.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              `app-sidebar__link ${isActive ? 'app-sidebar__link--active' : ''}`
-            }
-            onClick={() => playBlip(1200, 0.02)}
-            title={`${item.label} — ${item.subtitle}`}
-          >
-            <span className="app-sidebar__icon">{item.icon}</span>
-            <div className="app-sidebar__text">
-              <span className="app-sidebar__label">{item.label}</span>
-              <span className="app-sidebar__sublabel hud-text">{item.subtitle}</span>
+      <aside
+        className={`app-sidebar ${isCockpit ? 'app-sidebar--compact' : ''} ${
+          mobileOpen ? 'app-sidebar--mobile-open' : ''
+        }`}
+        aria-label="Main Application Navigation"
+      >
+        {/* Brand Header */}
+        <div className="app-sidebar__brand">
+          <div className="app-sidebar__brand-row">
+            <div className="app-sidebar__logo">
+              <span className="app-sidebar__diamond">◆</span>
+              <div className="app-sidebar__brand-text">
+                <div className="app-sidebar__title">NETRA / नेत्रा</div>
+                <div className="app-sidebar__subtitle hud-text">ISRO DSSAM OPERATIONS</div>
+              </div>
             </div>
-          </NavLink>
-        ))}
-      </nav>
 
-      {/* Sensor Ground Station Footer */}
-      <div className="app-sidebar__footer">
-        <div className="app-sidebar__station-card">
-          <div className="app-sidebar__station-head hud-text">
-            <span>GROUND SENSOR</span>
-            <span style={{ color: 'var(--status-active)' }}>CONNECTED</span>
+            {/* Mobile Close Button */}
+            <button
+              type="button"
+              className="app-sidebar__mobile-close-btn"
+              onClick={onCloseMobile}
+              aria-label="Close navigation menu"
+            >
+              ✕
+            </button>
           </div>
-          <div className="app-sidebar__station-name">ISTRAC BENGALURU</div>
-          <div className="app-sidebar__station-coords hud-text">12.9716° N • 77.5946° E</div>
-          <div className="app-sidebar__station-stat">
-            <span className="hud-text hud__faint">ACTIVE HORIZON CONE</span>
-            <span className="hud-text" style={{ color: 'var(--accent-cyan)' }}>3,200 KM</span>
+
+          <div className="app-sidebar__badge hud-text">
+            <span className="app-sidebar__status-dot" />
+            <span className="app-sidebar__badge-label">DSSAM LIVE</span>
           </div>
         </div>
 
-        <div className="app-sidebar__meta hud-text hud__dim">
-          <span>NETRA MISSION CONSOLE v2.6</span>
-          <span>BHARAT ORBITAL SAFETY</span>
+        {/* Nav Menu */}
+        <nav className="app-sidebar__nav">
+          {NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `app-sidebar__link ${isActive ? 'app-sidebar__link--active' : ''}`
+              }
+              onClick={handleLinkClick}
+              title={`${item.label} — ${item.subtitle}`}
+            >
+              <span className="app-sidebar__icon">{item.icon}</span>
+              <div className="app-sidebar__text">
+                <span className="app-sidebar__label">{item.label}</span>
+                <span className="app-sidebar__sublabel hud-text">{item.subtitle}</span>
+              </div>
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Sensor Ground Station Footer */}
+        <div className="app-sidebar__footer">
+          <div className="app-sidebar__station-card">
+            <div className="app-sidebar__station-head hud-text">
+              <span>GROUND SENSOR</span>
+              <span style={{ color: 'var(--status-active)' }}>CONNECTED</span>
+            </div>
+            <div className="app-sidebar__station-name">ISTRAC BENGALURU</div>
+            <div className="app-sidebar__station-coords hud-text">12.9716° N • 77.5946° E</div>
+            <div className="app-sidebar__station-stat">
+              <span className="hud-text hud__faint">ACTIVE HORIZON CONE</span>
+              <span className="hud-text" style={{ color: 'var(--accent-cyan)' }}>3,200 KM</span>
+            </div>
+          </div>
+
+          <div className="app-sidebar__meta hud-text hud__dim">
+            <span>NETRA MISSION CONSOLE v2.6</span>
+            <span>BHARAT ORBITAL SAFETY</span>
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+    </>
   )
 }

@@ -14,16 +14,21 @@ const istFormatter = new Intl.DateTimeFormat('en-IN', {
   hour12: false,
 })
 
-const ROUTE_TITLES: Record<string, { title: string; tag: string }> = {
-  '/overview': { title: 'MISSION OVERVIEW // CINEMATIC BRIEFING', tag: 'BHARAT SPACE SITUATIONAL AWARENESS' },
-  '/tracking': { title: 'ORBITAL SURVEILLANCE COCKPIT', tag: '3D EARTH // SGP4 REAL-TIME' },
-  '/catalog': { title: 'SPACE OBJECT INVENTORY & TELEMETRY', tag: 'CELESTRAK & ISRO FLEET' },
-  '/debris': { title: 'ORBITAL DEBRIS ENVIRONMENT & RISKS', tag: 'KESSLER RUNAWAY ANALYSIS' },
-  '/alerts': { title: 'MISSION LOGS & CONJUNCTION NOTICES', tag: 'DSSAM EVENT STREAM' },
-  '/about': { title: 'PROJECT NETRA // SYSTEM SPECIFICATION', tag: 'ISRO SSA INITIATIVE' },
+const ROUTE_TITLES: Record<string, { title: string; tag: string; shortTitle: string }> = {
+  '/overview': { title: 'MISSION OVERVIEW // BRIEFING', tag: 'BHARAT SSA', shortTitle: 'OVERVIEW' },
+  '/tracking': { title: 'ORBITAL SURVEILLANCE COCKPIT', tag: 'SGP4 REAL-TIME', shortTitle: '3D COCKPIT' },
+  '/catalog': { title: 'SPACE OBJECT INVENTORY & TELEMETRY', tag: 'FLEET CATALOG', shortTitle: 'CATALOG' },
+  '/debris': { title: 'DEBRIS ENVIRONMENT & RISKS', tag: 'KESSLER ANALYSIS', shortTitle: 'DEBRIS' },
+  '/alerts': { title: 'MISSION LOGS & CONJUNCTIONS', tag: 'DSSAM STREAM', shortTitle: 'ALERTS' },
+  '/about': { title: 'PROJECT NETRA // SPECIFICATION', tag: 'ISRO SSA', shortTitle: 'ABOUT' },
 }
 
-export default function TopBar() {
+interface TopBarProps {
+  mobileMenuOpen?: boolean
+  onToggleMobileMenu?: () => void
+}
+
+export default function TopBar({ mobileMenuOpen = false, onToggleMobileMenu }: TopBarProps) {
   const location = useLocation()
   const { satellites, loading } = useSatellites()
   const [time, setTime] = useState(() => istFormatter.format(new Date()))
@@ -46,7 +51,8 @@ export default function TopBar() {
 
   const currentInfo = ROUTE_TITLES[location.pathname] || {
     title: 'MISSION OPERATIONS CONSOLE',
-    tag: 'ISRO DSSAM SENSOR GRID',
+    tag: 'ISRO DSSAM SENSORS',
+    shortTitle: 'NETRA CONSOLE',
   }
 
   const handleAudioToggle = () => {
@@ -57,10 +63,28 @@ export default function TopBar() {
 
   return (
     <header className="app-topbar" aria-label="Operations Status Bar">
+      {/* Mobile Hamburger Menu Toggle Button */}
+      <button
+        type="button"
+        className="app-topbar__hamburger-btn"
+        onClick={() => {
+          playBlip(1100, 0.03)
+          onToggleMobileMenu?.()
+        }}
+        aria-label={mobileMenuOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
+        aria-expanded={mobileMenuOpen}
+      >
+        <span className="app-topbar__hamburger-icon">
+          {mobileMenuOpen ? '✕' : '☰'}
+        </span>
+        <span className="app-topbar__hamburger-text hud-text">MENU</span>
+      </button>
+
       {/* Left title & context */}
       <div className="app-topbar__left">
         <span className="app-topbar__kicker hud-text">{currentInfo.tag}</span>
-        <h1 className="app-topbar__title">{currentInfo.title}</h1>
+        <h1 className="app-topbar__title app-topbar__title--desktop">{currentInfo.title}</h1>
+        <h1 className="app-topbar__title app-topbar__title--mobile">{currentInfo.shortTitle}</h1>
       </div>
 
       {/* Center live clock & orbital cycle */}
@@ -78,7 +102,7 @@ export default function TopBar() {
 
       {/* Right controls and fleet count */}
       <div className="app-topbar__right hud-text">
-        {/* Mode Segment Switcher */}
+        {/* Mode Segment Switcher (Desktop) */}
         <div className="app-topbar__mode-segment">
           <Link
             to="/overview"
@@ -92,14 +116,16 @@ export default function TopBar() {
             className={`app-topbar__mode-tab ${location.pathname !== '/overview' ? 'app-topbar__mode-tab--active' : ''}`}
             onClick={() => playBlip(1300, 0.02)}
           >
-            CONSOLE
+            COCKPIT
           </Link>
         </div>
 
         {/* Tracked count pill */}
         <div className="app-topbar__stat-pill">
           <span className="app-topbar__status-dot" />
-          <span>{loading ? 'CONNECTING...' : `${satellites.length} OBJECTS TRACKED`}</span>
+          <span className="app-topbar__stat-text">
+            {loading ? 'SYNCING...' : `${satellites.length} OBJECTS`}
+          </span>
         </div>
 
         {/* Audio Synthesizer toggle */}
@@ -107,13 +133,19 @@ export default function TopBar() {
           className="app-topbar__audio-btn u-link"
           onClick={handleAudioToggle}
           title="Toggle Web Audio Mission Control sounds"
+          aria-label="Toggle Mission Control Audio"
         >
-          {soundActive ? '🔊 AUDIO: ON' : '🔈 AUDIO: MUTED'}
+          <span className="app-topbar__audio-label--desktop">
+            {soundActive ? '🔊 AUDIO: ON' : '🔈 AUDIO: MUTED'}
+          </span>
+          <span className="app-topbar__audio-label--mobile">
+            {soundActive ? '🔊' : '🔈'}
+          </span>
         </button>
 
         {/* Defense classification */}
         <div className="app-topbar__security-badge">
-          SEC-LVL: <span style={{ color: 'var(--status-active)' }}>NOMINAL</span>
+          SEC: <span style={{ color: 'var(--status-active)' }}>NOMINAL</span>
         </div>
       </div>
     </header>

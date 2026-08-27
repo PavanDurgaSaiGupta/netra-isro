@@ -7,10 +7,15 @@ export default function TacticalCursor() {
   const [isLocked, setIsLocked] = useState(false)
   const [targetName, setTargetName] = useState<string | null>(null)
   const [visible, setVisible] = useState(false)
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
 
   useEffect(() => {
-    // Only run on desktop/pointer devices
-    if (window.matchMedia('(pointer: coarse)').matches) return
+    // Detect touch / coarse pointer devices
+    const isTouch = window.matchMedia('(pointer: coarse), (hover: none)').matches || 'ontouchstart' in window
+    if (isTouch) {
+      setIsTouchDevice(true)
+      return
+    }
 
     const cursor = cursorRef.current
     if (!cursor) return
@@ -80,6 +85,8 @@ export default function TacticalCursor() {
       cancelAnimationFrame(rafId)
     }
   }, [isLocked, visible])
+
+  if (isTouchDevice) return null
 
   return (
     <div
