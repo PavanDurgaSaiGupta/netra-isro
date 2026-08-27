@@ -1,11 +1,14 @@
 # 🛰️ ISRO NETRA — Space Situational Awareness & Orbital Cockpit
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-00F0FF?style=for-the-badge&logo=githubpages&logoColor=black)](https://pavandurgasaigupta.github.io/netra-isro/)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-8.2-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Three.js](https://img.shields.io/badge/Three.js-0.185-000000?style=flat-square&logo=threedotjs&logoColor=white)](https://threejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-00F0FF?style=flat-square)](LICENSE)
 
+> 🚀 **LIVE DEMO**: [https://pavandurgasaigupta.github.io/netra-isro/](https://pavandurgasaigupta.github.io/netra-isro/)
+>
 > **NETRA (Network for Space Objects Tracking and Analysis)** is a next-generation Space Situational Awareness (SSA) and orbital telemetry visualization platform inspired by **ISRO's SSA Control Centre (ISTRAC Bengaluru)**. It provides real-time SGP4 orbit propagation, dynamic 3D camera tracking, collision prediction screening, interactive search, radar coverage cones, and comprehensive spacecraft telemetry.
 
 ---
@@ -202,6 +205,16 @@ netra-isro/
 | **Toggle Metric Units** | Click any card in the bottom-left Telemetry Readout |
 | **Run Subsystem Diagnostic**| Click any row in the top-right Subsystem Telemetry panel |
 | **Release Lock / Recenter** | Click `⊙ CENTER EARTH VIEW` or `⊙ RESET VIEW` at bottom center |
+
+---
+
+## 🌐 Live Demo & Deployment
+
+The application is deployed on **GitHub Pages** with continuous deployment:
+
+- 🔗 **Production URL**: [https://pavandurgasaigupta.github.io/netra-isro/](https://pavandurgasaigupta.github.io/netra-isro/)
+- 📱 **Device Compatibility**: Fully responsive on **Mobile Phones** (iPhone, Pixel, Galaxy), **Tablets** (iPad, Surface), **Laptops**, and **Desktops**.
+- ⚡ **Mission Preloader**: Automatically pre-caches high-resolution planetary textures, SGP4 ephemeris matrices, and Google Fonts across all devices.
 
 ---
 
