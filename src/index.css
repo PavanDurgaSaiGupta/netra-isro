@@ -177,6 +177,25 @@ body::after {
   transform: scaleX(1);
   transform-origin: left;
 }
+.skip-link {
+  position: fixed;
+  top: -48px;
+  left: var(--space-3);
+  z-index: 10000;
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent-orange);
+  color: var(--bg-void);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border-radius: 0 0 6px 6px;
+  text-decoration: none;
+  transition: top 0.15s ease-out;
+}
+.skip-link:focus-visible {
+  top: 0;
+}
 
 /* ============================================================
    HUD OVERLAY

@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import {
   type SatelliteItem,
   SEED_CATALOG,
   computeState,
   fetchLiveCelesTrak,
+  formatIST,
 } from '../services/satelliteData'
 import { playLockSound } from '../utils/audio'
 
@@ -94,49 +95,49 @@ const INITIAL_ALERTS: AlertLogItem[] = [
 const SatelliteContext = createContext<SatelliteContextType | undefined>(undefined)
 
 export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [rawCatalog, setRawCatalog] = useState<any[]>(SEED_CATALOG)
+  const [rawCatalog, setRawCatalog] = useState(SEED_CATALOG)
   const [loading] = useState(false)
-  const [selectedSat, setSelectedSatState] = useState<SatelliteItem | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [dataSource, setDataSource] = useState<SatelliteItem['source']>('seed')
+  const requestRef = useRef(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterRegime, setFilterRegime] = useState<'ALL' | 'ISRO' | 'DEBRIS' | 'LEO' | 'MEO' | 'GEO'>('ALL')
   const [issData, setIssData] = useState<ISSData | null>(null)
   const [alerts, setAlerts] = useState<AlertLogItem[]>(INITIAL_ALERTS)
-  const [, setTick] = useState(0)
-  const [apiStatus, setApiStatus] = useState<'ONLINE' | 'SYNCING' | 'STANDBY'>('ONLINE')
-  const [lastSyncTime, setLastSyncTime] = useState('JUST NOW')
+  const [tick, setTick] = useState(() => Date.now())
+  const [apiStatus, setApiStatus] = useState<'ONLINE' | 'SYNCING' | 'STANDBY'>('SYNCING')
+  const [lastSyncTime, setLastSyncTime] = useState('DEMO ELEMENTS')
   const [recenterTrigger, setRecenterTrigger] = useState(0)
   const [resetViewTrigger, setResetViewTrigger] = useState(0)
 
   const triggerRecenter = () => setRecenterTrigger((t) => t + 1)
   const triggerResetView = () => {
-    setSelectedSatState(null)
+    setSelectedId(null)
     setResetViewTrigger((t) => t + 1)
   }
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    const request = ++requestRef.current
     try {
       const live = await fetchLiveCelesTrak()
-      if (live.length > 0) {
-        setRawCatalog(live)
-      }
-      setApiStatus('ONLINE')
-      const d = new Date()
-      setLastSyncTime(
-        `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')} IST`
-      )
+      if (request !== requestRef.current) return
+      setRawCatalog(live.items)
+      setDataSource(live.status === 'ONLINE' ? 'celestrak' : live.status === 'CACHE' ? 'cached' : 'seed')
+      setApiStatus(live.status === 'ONLINE' ? 'ONLINE' : 'STANDBY')
+      setLastSyncTime(live.fetchedAt ? `${formatIST(new Date(live.fetchedAt))} IST${live.status === 'CACHE' ? ' / CACHED' : ''}` : 'DEMO ELEMENTS')
     } catch {
-      setApiStatus('STANDBY')
+      if (request === requestRef.current) setApiStatus('STANDBY')
     }
-  }
-
-  // Fetch live CelesTrak ephemeris on mount
-  useEffect(() => {
-    loadData()
   }, [])
+
+  useEffect(() => {
+    void loadData()
+    return () => { requestRef.current++ }
+  }, [loadData])
 
   // Propagate all satellites every 1.5 seconds using satellite.js SGP4
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1500)
+    const id = setInterval(() => setTick(Date.now()), 1500)
     return () => clearInterval(id)
   }, [])
 
@@ -175,25 +176,17 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Compute live states
   const satellites = useMemo(() => {
-    const now = new Date()
+    const now = new Date(tick)
     return rawCatalog
-      .map((item) => computeState(item, now, 'celestrak'))
+      .map((item) => computeState(item, now, SEED_CATALOG.some((seed) => seed.tle1 === item.tle1 && seed.tle2 === item.tle2) ? 'seed' : dataSource))
       .filter((s): s is SatelliteItem => Boolean(s))
-  }, [rawCatalog])
+  }, [rawCatalog, tick, dataSource])
 
-  // Keep selectedSat updated with fresh propagated coordinates
-  useEffect(() => {
-    if (selectedSat) {
-      const match = satellites.find((s) => s.id === selectedSat.id)
-      if (match) {
-        setSelectedSatState(match)
-      }
-    }
-  }, [satellites, selectedSat?.id])
+  const selectedSat = satellites.find((sat) => sat.id === selectedId) ?? null
 
   const setSelectedSat = (sat: SatelliteItem | null) => {
     if (sat) playLockSound()
-    setSelectedSatState(sat)
+    setSelectedId(sat?.id ?? null)
   }
 
   const selectSatelliteById = (id: string) => {
@@ -205,12 +198,13 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Filter satellites based on query and regime
   const filteredSatellites = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
     return satellites.filter((s) => {
       const matchesQuery =
-        !searchQuery.trim() ||
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        String(s.noradId).includes(searchQuery) ||
-        s.operator.toLowerCase().includes(searchQuery.toLowerCase())
+        !query ||
+        s.name.toLowerCase().includes(query) ||
+        String(s.noradId).includes(query) ||
+        s.operator.toLowerCase().includes(query)
 
       if (!matchesQuery) return false
 

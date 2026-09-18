@@ -16,7 +16,7 @@ export default function LandingPageView() {
       <div className="landing-view__quick-bar hud-text">
         <span className="landing-view__quick-status">
           <span className="landing-view__quick-dot" />
-          ISRO DSSAM SENSORS ONLINE • EPHEMERIS: {apiStatus}
+          EDUCATIONAL CONSOLE • EPHEMERIS: {apiStatus}
         </span>
         <div className="landing-view__quick-actions">
           <Link
@@ -38,6 +38,25 @@ export default function LandingPageView() {
 
       {/* Hero Section with Photorealistic Authentic Earth */}
       <Hero />
+
+      <section className="mission-summary" aria-label="Catalog at a glance">
+        <Link to="/catalog" className="mission-summary__card">
+          <span className="hud-text">01 / EXPLORE THE CATALOG</span>
+          <strong>{satellites.length}<small>modeled objects</small></strong>
+          <span>Search spacecraft and inspect orbital elements <span aria-hidden="true">↗</span></span>
+        </Link>
+        <Link to="/tracking" className="mission-summary__card">
+          <span className="hud-text">02 / FOLLOW THE FLEET</span>
+          <strong>{isroSats.length}<small>Indian spacecraft</small></strong>
+          <span>Explore the globe from a new perspective <span aria-hidden="true">↗</span></span>
+        </Link>
+        <Link to="/debris" className="mission-summary__card">
+          <span className="hud-text">03 / UNDERSTAND THE ENVIRONMENT</span>
+          <strong>{debrisSats.length}<small>debris examples</small></strong>
+          <span>Learn about orbital debris and illustrative risks <span aria-hidden="true">↗</span></span>
+        </Link>
+      </section>
+      <p className="mission-disclaimer">Independent educational visualization, not an official ISRO service. Positions are propagated estimates; seed elements, alerts, and risk scenarios are illustrative, not operational guidance.</p>
 
       {/* 3D Mission Cockpit Launch Portal Banner */}
       <section className="landing-view__portal-section" id="cockpit-portal">
@@ -71,7 +90,7 @@ export default function LandingPageView() {
                 <div className="portal-card__chip">
                   <span className="portal-card__chip-label">ISRO ACTIVE FLEET:</span>
                   <span className="portal-card__chip-val" style={{ color: 'var(--status-active)' }}>
-                    {isroSats.length || 9} PAYLOADS
+                    {isroSats.length} PAYLOADS
                   </span>
                 </div>
                 <div className="portal-card__chip">

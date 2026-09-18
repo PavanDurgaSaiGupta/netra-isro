@@ -18,7 +18,7 @@ export interface SatelliteItem {
   rangeKm: number
   isOverhead: boolean
   color: string
-  source: 'celestrak' | 'wheretheiss' | 'cached'
+  source: 'celestrak' | 'wheretheiss' | 'cached' | 'seed'
   conjunctionRisk: 'LOW' | 'MEDIUM' | 'CRITICAL'
   operator: string
   inclinationDeg: number
@@ -31,6 +31,16 @@ export const BENGALURU_OBSERVER = {
   latitude: satellite.degreesToRadians(12.9716),
   longitude: satellite.degreesToRadians(77.5946),
   height: 0.92, // 920 meters above sea level
+}
+
+export function formatIST(d: Date): string {
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(d)
 }
 
 // Verified Authentic TLE Ephemeris Catalog (ISRO Fleet, Space Stations, Tracked Debris)
@@ -248,29 +258,47 @@ export function geodeticToVector3(lat: number, lng: number, altKm: number): [num
   return [x, y, z]
 }
 
+function tleChecksum(line: string): number {
+  let sum = 0
+  for (const ch of line.slice(0, 68)) {
+    if (ch === '-') sum++
+    else if (ch >= '0' && ch <= '9') sum += ch.charCodeAt(0) - 48
+  }
+  return sum % 10
+}
+
+export function validTLE(tle1: string, tle2: string, noradId?: number, strict = false): boolean {
+  if (typeof tle1 !== 'string' || typeof tle2 !== 'string') return false
+  if (
+    tle1.length !== 69 || tle2.length !== 69 ||
+    !tle1.startsWith('1 ') || !tle2.startsWith('2 ') ||
+    tle1.slice(2, 7).trim() !== tle2.slice(2, 7).trim() ||
+    (noradId !== undefined && Number(tle1.slice(2, 7)) !== noradId)
+  ) return false
+  return !strict || (Number(tle1.slice(68)) === tleChecksum(tle1) && Number(tle2.slice(68)) === tleChecksum(tle2))
+}
+
 // Compute live orbital state via satellite.js SGP4 propagator
 export function computeState(
   base: (typeof SEED_CATALOG)[0],
   date: Date = new Date(),
-  source: 'celestrak' | 'wheretheiss' | 'cached' = 'cached',
+  source: SatelliteItem['source'] = 'seed',
 ): SatelliteItem | null {
   try {
+    if (!Number.isFinite(date.getTime())) return null
     const satrec = satellite.twoline2satrec(base.tle1, base.tle2)
+    if (satrec.error || !validTLE(base.tle1, base.tle2, base.noradId)) return null
     const pv = satellite.propagate(satrec, date)
-    if (!pv || !pv.position || typeof pv.position === 'boolean') return null
+    if (!pv || !pv.position || !pv.velocity ||
+      typeof pv.position === 'boolean' || typeof pv.velocity === 'boolean' ||
+      ![pv.position.x, pv.position.y, pv.position.z, pv.velocity.x, pv.velocity.y, pv.velocity.z].every(Number.isFinite)) return null
 
     const gmst = satellite.gstime(date)
     const geodetic = satellite.eciToGeodetic(pv.position, gmst)
     const lat = satellite.degreesLat(geodetic.latitude)
     const lng = satellite.degreesLong(geodetic.longitude)
-    const altKm = Math.max(80, geodetic.height)
-
-    // Compute velocity in km/s
-    let speedKmS = 7.5
-    if (pv.velocity && typeof pv.velocity !== 'boolean') {
-      const { x, y, z } = pv.velocity
-      speedKmS = Math.sqrt(x * x + y * y + z * z)
-    }
+    const altKm = geodetic.height
+    const speedKmS = Math.hypot(pv.velocity.x, pv.velocity.y, pv.velocity.z)
 
     // Look angles from Bengaluru DSSAM ground station
     const posEcf = satellite.eciToEcf(pv.position, gmst)
@@ -280,8 +308,10 @@ export function computeState(
     const rangeKm = lookAngles.rangeSat
 
     // Inclination and Period
-    const inclinationDeg = satrec.inclo ? (satrec.inclo * 180) / Math.PI : 98.2
-    const periodMin = satrec.no ? (2 * Math.PI) / satrec.no : 96.5
+    const inclinationDeg = (satrec.inclo * 180) / Math.PI
+    const periodMin = (2 * Math.PI) / satrec.no
+    if (![lat, lng, altKm, speedKmS, azimuthDeg, elevationDeg, rangeKm, inclinationDeg, periodMin].every(Number.isFinite) ||
+      altKm <= 0 || speedKmS <= 0 || rangeKm <= 0 || periodMin <= 0) return null
 
     return {
       ...base,
@@ -305,86 +335,127 @@ export function computeState(
   }
 }
 
-// Fetch live TLE sets from CelesTrak with graceful caching & fallback
-export async function fetchLiveCelesTrak(): Promise<Array<(typeof SEED_CATALOG)[0]>> {
-  const cached = localStorage.getItem('netra_celestrak_cache_v2')
-  const cacheTime = localStorage.getItem('netra_celestrak_time_v2')
-  if (cached && cacheTime && Date.now() - Number(cacheTime) < 15 * 60 * 1000) {
-    try {
-      const parsed = JSON.parse(cached)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
-    } catch {}
+export const CELESTRAK_TLE_URL = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle'
+const CACHE_KEY = 'netra_celestrak_cache_v3'
+const CACHE_TIME_KEY = 'netra_celestrak_time_v3'
+const CACHE_TTL_MS = 15 * 60 * 1000
+
+export interface CelesTrakResult {
+  items: Array<(typeof SEED_CATALOG)[0]>
+  status: 'ONLINE' | 'CACHE' | 'SEED'
+  fetchedAt: number
+}
+
+interface CelesTrakCachePayload {
+  items: Array<(typeof SEED_CATALOG)[0]>
+  fetchedAt: number
+  endpoint: string
+  format: 'tle'
+}
+
+function readCelesTrakCache(): CelesTrakResult | null {
+  let raw: string | null
+  let timeRaw: string | null
+  try {
+    raw = localStorage.getItem(CACHE_KEY)
+    timeRaw = localStorage.getItem(CACHE_TIME_KEY)
+  } catch {
+    return null
   }
+  if (!raw || !timeRaw) return null
+  try {
+    const parsed = JSON.parse(raw) as CelesTrakCachePayload
+    const age = Date.now() - parsed.fetchedAt
+    const fresh = Number.isFinite(parsed.fetchedAt) && age >= 0 && age < CACHE_TTL_MS
+    const proven =
+      parsed.endpoint === CELESTRAK_TLE_URL && parsed.format === 'tle' &&
+      Array.isArray(parsed.items) && parsed.items.length > 0 &&
+      parsed.items.every((it) => it && typeof it.id === 'string' && typeof it.name === 'string' &&
+        typeof it.operator === 'string' && typeof it.color === 'string' && Number.isInteger(it.noradId) &&
+        ['payload', 'debris', 'station'].includes(it.type) && ['LEO', 'MEO', 'GEO', 'SSO', 'IGSO'].includes(it.orbitClass) &&
+        validTLE(it.tle1, it.tle2, it.noradId))
+    if (!fresh || !proven) return null
+    return { items: parsed.items, status: 'CACHE', fetchedAt: parsed.fetchedAt }
+  } catch {
+    return null
+  }
+}
+
+function writeCelesTrakCache(items: Array<(typeof SEED_CATALOG)[0]>, fetchedAt: number): void {
+  const payload: CelesTrakCachePayload = { items, fetchedAt, endpoint: CELESTRAK_TLE_URL, format: 'tle' }
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(payload))
+    localStorage.setItem(CACHE_TIME_KEY, String(fetchedAt))
+  } catch {}
+}
+
+function isISROName(name: string): boolean {
+  return (
+    name.includes('CARTOSAT') || name.includes('RISAT') || name.includes('RESOURCESAT') ||
+    name.includes('GSAT') || name.includes('IRNSS') || name.includes('OCEANSAT') ||
+    name.includes('EOS') || name.includes('INSAT')
+  )
+}
+
+export function parseCelesTrakTLE(text: string): Array<(typeof SEED_CATALOG)[0]> {
+  const lines = text.split(/\r?\n/)
+  const liveItems: Array<(typeof SEED_CATALOG)[0]> = []
+  const seedMap = new Map(SEED_CATALOG.map((s) => [s.noradId, s]))
+  for (let i = 0; i < lines.length - 2; i++) {
+    const name = lines[i].trim()
+    const l1 = lines[i + 1]
+    const l2 = lines[i + 2]
+    if (!l1.startsWith('1 ') || !l2.startsWith('2 ')) continue
+    const norad = Number(l1.slice(2, 7))
+    if (!Number.isInteger(norad)) continue
+    i += 2
+    if (!validTLE(l1, l2, norad, true)) continue
+    const match = seedMap.get(norad)
+    if (match) {
+      liveItems.push({ ...match, tle1: l1, tle2: l2 })
+    } else if (isISROName(name.toUpperCase())) {
+      const inclination = Number(l2.slice(8, 16))
+      const meanMotion = Number(l2.slice(52, 63))
+      const launchYear = Number(l1.slice(9, 11))
+      if (!Number.isFinite(inclination) || !Number.isFinite(meanMotion) || meanMotion <= 0) continue
+      liveItems.push({
+        id: `isro-${norad}`,
+        name,
+        noradId: norad,
+        type: 'payload',
+        orbitClass: Math.abs(meanMotion - 1.0027) < 0.05 ? (inclination < 5 ? 'GEO' : 'IGSO') : meanMotion < 6 ? 'MEO' : inclination > 96 && inclination < 103 ? 'SSO' : 'LEO',
+        color: '#00f0ff',
+        operator: 'ISRO',
+        conjunctionRisk: 'LOW',
+        launchYear: launchYear + (launchYear >= 57 ? 1900 : 2000),
+        tle1: l1,
+        tle2: l2,
+      })
+    }
+  }
+  return liveItems
+}
+
+export async function fetchLiveCelesTrak(): Promise<CelesTrakResult> {
+  const cached = readCelesTrakCache()
+  if (cached) return cached
 
   try {
-    // Attempt CelesTrak Active Satellite fetch via CORS proxy to prevent browser 403 errors
-    const targetUrl = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=json'
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
-    const res = await fetch(proxyUrl, {
-      signal: AbortSignal.timeout(3500),
-    })
-
+    const res = await fetch(CELESTRAK_TLE_URL, { signal: AbortSignal.timeout(3500) })
     if (res.ok) {
-      const data = await res.json()
-      if (Array.isArray(data) && data.length > 0) {
-        const liveItems: Array<(typeof SEED_CATALOG)[0]> = []
-        // Filter Indian satellites or match seed catalog by NORAD ID
-        const seedMap = new Map(SEED_CATALOG.map((s) => [s.noradId, s]))
-
-        for (const item of data) {
-          const norad = item.NORAD_CAT_ID
-          const name = item.OBJECT_NAME ? item.OBJECT_NAME.trim() : ''
-          const match = seedMap.get(norad)
-
-          if (match && item.TLE_LINE1 && item.TLE_LINE2) {
-            liveItems.push({
-              ...match,
-              name: match.name,
-              tle1: item.TLE_LINE1,
-              tle2: item.TLE_LINE2,
-            })
-          } else if (
-            (name.includes('CARTOSAT') ||
-              name.includes('RISAT') ||
-              name.includes('RESOURCESAT') ||
-              name.includes('GSAT') ||
-              name.includes('IRNSS') ||
-              name.includes('OCEANSAT') ||
-              name.includes('EOS') ||
-              name.includes('INSAT')) &&
-            item.TLE_LINE1 &&
-            item.TLE_LINE2
-          ) {
-            liveItems.push({
-              id: `isro-${norad}`,
-              name,
-              noradId: norad,
-              type: 'payload',
-              orbitClass: item.INCLINATION > 80 ? 'SSO' : item.INCLINATION < 5 ? 'GEO' : 'LEO',
-              color: '#00f0ff',
-              operator: 'ISRO',
-              conjunctionRisk: 'LOW',
-              launchYear: parseInt(item.OBJECT_ID ? item.OBJECT_ID.substring(0, 4) : '2020') || 2020,
-              tle1: item.TLE_LINE1,
-              tle2: item.TLE_LINE2,
-            })
-          }
-        }
-
-        if (liveItems.length >= 5) {
-          // Merge with debris seeds so debris remains represented
-          const combined = [...liveItems, ...SEED_CATALOG.filter((s) => s.type === 'debris')]
-          localStorage.setItem('netra_celestrak_cache_v2', JSON.stringify(combined))
-          localStorage.setItem('netra_celestrak_time_v2', String(Date.now()))
-          return combined
-        }
+      const text = await res.text()
+      const liveItems = parseCelesTrakTLE(text)
+      if (liveItems.length >= 5) {
+        const combined = [...liveItems, ...SEED_CATALOG.filter((s) => s.type === 'debris')]
+        writeCelesTrakCache(combined, Date.now())
+        return { items: combined, status: 'ONLINE', fetchedAt: Date.now() }
       }
     }
   } catch {
-    console.info('CelesTrak live fetch timed out or offline, using verified authentic TLE seed catalog.')
+    console.info('CelesTrak live fetch failed, using verified authentic TLE seed catalog.')
   }
 
-  return SEED_CATALOG
+  return { items: SEED_CATALOG, status: 'SEED', fetchedAt: 0 }
 }
 
 // Fetch live ISS telemetry from wheretheiss.at

@@ -175,7 +175,7 @@ export default function AlertsView() {
         </div>
 
         <div className="debris-table-wrap">
-          <table className="catalog-table">
+          <table className="catalog-table" aria-label="ISRO tracking radar and observatory network facilities">
             <thead>
               <tr className="hud-text">
                 <th>STATUS</th>

@@ -25,6 +25,9 @@ export default function App() {
         <MissionPreloader />
 
         <div className="app-shell">
+          <a href="#main-content" className="skip-link">
+            Skip to main content
+          </a>
           <TacticalCursor />
           <Sidebar
             mobileOpen={mobileMenuOpen}
@@ -36,7 +39,7 @@ export default function App() {
               onToggleMobileMenu={() => setMobileMenuOpen((o) => !o)}
             />
             <SSATicker />
-            <main className="app-shell__viewport">
+            <main className="app-shell__viewport" id="main-content" tabIndex={-1}>
               <Routes>
                 <Route path="/" element={<LandingPageView />} />
                 <Route path="/overview" element={<LandingPageView />} />

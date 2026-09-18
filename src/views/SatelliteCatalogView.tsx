@@ -214,25 +214,45 @@ export default function SatelliteCatalogView() {
         ) : (
           /* Desktop / Scrollable Table View */
           <div className="catalog-view__table-container">
-            <table className="catalog-table">
+            <table className="catalog-table" aria-label="Satellite catalog with live orbital telemetry">
               <thead>
                 <tr className="hud-text">
                   <th style={{ width: '40px' }}>STAT</th>
-                  <th onClick={() => handleSort('name')} className="catalog-table__sortable">
+                  <th
+                    onClick={() => handleSort('name')}
+                    className="catalog-table__sortable"
+                    aria-sort={sortField === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  >
                     OBJECT NAME {sortField === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('noradId')} className="catalog-table__sortable">
+                  <th
+                    onClick={() => handleSort('noradId')}
+                    className="catalog-table__sortable"
+                    aria-sort={sortField === 'noradId' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  >
                     NORAD ID {sortField === 'noradId' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                   </th>
                   <th>OPERATOR / MISSION</th>
                   <th>REGIME</th>
-                  <th onClick={() => handleSort('altKm')} className="catalog-table__sortable catalog-table__num">
+                  <th
+                    onClick={() => handleSort('altKm')}
+                    className="catalog-table__sortable catalog-table__num"
+                    aria-sort={sortField === 'altKm' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  >
                     ALTITUDE (KM) {sortField === 'altKm' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('speedKmS')} className="catalog-table__sortable catalog-table__num">
+                  <th
+                    onClick={() => handleSort('speedKmS')}
+                    className="catalog-table__sortable catalog-table__num"
+                    aria-sort={sortField === 'speedKmS' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  >
                     VELOCITY (KM/S) {sortField === 'speedKmS' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('inclinationDeg')} className="catalog-table__sortable catalog-table__num">
+                  <th
+                    onClick={() => handleSort('inclinationDeg')}
+                    className="catalog-table__sortable catalog-table__num"
+                    aria-sort={sortField === 'inclinationDeg' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  >
                     INCLINATION {sortField === 'inclinationDeg' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                   </th>
                   <th>ISTRAC HORIZON</th>
@@ -249,9 +269,18 @@ export default function SatelliteCatalogView() {
                     <tr
                       key={sat.id}
                       className={`catalog-table__row ${isSelected ? 'catalog-table__row--selected' : ''}`}
+                      tabIndex={0}
+                      aria-selected={isSelected}
                       onClick={() => {
                         playLockSound()
                         setSelectedSat(sat)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          playLockSound()
+                          setSelectedSat(sat)
+                        }
                       }}
                     >
                       <td>
