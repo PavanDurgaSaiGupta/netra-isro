@@ -31,7 +31,7 @@ export default function AboutView() {
         <div className="about-view__pillars">
           <div className="about-view__pillar-card">
             <span className="about-view__pillar-num hud-text">01 // RADAR SURVEILLANCE</span>
-            <h3 className="about-view__pillar-title">Multi-Object Tracking Radars (MOTR)</h3>
+            <h2 className="about-view__pillar-title">Multi-Object Tracking Radars (MOTR)</h2>
             <p className="about-view__pillar-desc">
               Dedicated high-power phased array radars capable of spotting and cataloging space debris down to 10 cm size at 1,500 km altitude, feeding precise orbital state vectors to the DSSAM control center.
             </p>
@@ -39,7 +39,7 @@ export default function AboutView() {
 
           <div className="about-view__pillar-card">
             <span className="about-view__pillar-num hud-text">02 // OPTICAL OBSERVATORIES</span>
-            <h3 className="about-view__pillar-title">Deep Space Electro-Optical Telescopes</h3>
+            <h2 className="about-view__pillar-title">Deep Space Electro-Optical Telescopes</h2>
             <p className="about-view__pillar-desc">
               High-aperture optical telescopes placed at Mount Abu, Hanle, and Ponmudi monitoring deep space, Geostationary Earth Orbit (GEO) satellites, and orbital graveyard corridors.
             </p>
@@ -47,7 +47,7 @@ export default function AboutView() {
 
           <div className="about-view__pillar-card">
             <span className="about-view__pillar-num hud-text">03 // COLLISION AVOIDANCE</span>
-            <h3 className="about-view__pillar-title">Autonomous Maneuver Planning (CAM)</h3>
+            <h2 className="about-view__pillar-title">Autonomous Maneuver Planning (CAM)</h2>
             <p className="about-view__pillar-desc">
               Proprietary SGP4 algorithms calculating probability of collision ($P_c$) in real time. If a close approach falls under the 1.0 km threshold, automated avoidance burns are synchronized with satellite bus thrusters.
             </p>
@@ -55,7 +55,7 @@ export default function AboutView() {
 
           <div className="about-view__pillar-card">
             <span className="about-view__pillar-num hud-text">04 // GLOBAL DATA FEDERATION</span>
-            <h3 className="about-view__pillar-title">Inter-Agency Coordination (IADC &amp; UN)</h3>
+            <h2 className="about-view__pillar-title">Inter-Agency Coordination (IADC &amp; UN)</h2>
             <p className="about-view__pillar-desc">
               Active liaison with the Inter-Agency Space Debris Coordination Committee (IADC) and the UN Committee on the Peaceful Uses of Outer Space (UN COPUOS) for cross-verifying close orbital passes.
             </p>
@@ -77,7 +77,7 @@ export default function AboutView() {
             <div className="about-timeline__item">
               <div className="about-timeline__year hud-text">DECEMBER 2020</div>
               <div className="about-timeline__body">
-                <h4 className="about-timeline__title">Dedication of NETRA Control Center</h4>
+                <h3 className="about-timeline__title">Dedication of NETRA Control Center</h3>
                 <p className="about-timeline__text">
                   Dedicated by ISRO Chairman at ISTRAC Bengaluru campus as India’s dedicated SSA nerve center.
                 </p>
@@ -87,7 +87,7 @@ export default function AboutView() {
             <div className="about-timeline__item">
               <div className="about-timeline__year hud-text">MARCH 2022</div>
               <div className="about-timeline__body">
-                <h4 className="about-timeline__title">ISRO System for Safe &amp; Sustainable Operations (IS4OM)</h4>
+                <h3 className="about-timeline__title">ISRO System for Safe &amp; Sustainable Operations (IS4OM)</h3>
                 <p className="about-timeline__text">
                   Formal integration of multi-sensor fusion including Sriharikota MOTR and Mount Abu deep space telescopes.
                 </p>
@@ -97,7 +97,7 @@ export default function AboutView() {
             <div className="about-timeline__item">
               <div className="about-timeline__year hud-text">CURRENT — 2026</div>
               <div className="about-timeline__body">
-                <h4 className="about-timeline__title">Real-Time Autonomous Conjunction Shield</h4>
+                <h3 className="about-timeline__title">Real-Time Autonomous Conjunction Shield</h3>
                 <p className="about-timeline__text">
                   Tracking over 72,000 orbital fragments, executing over 20+ precise collision avoidance maneuvers per year across LEO and GEO.
                 </p>

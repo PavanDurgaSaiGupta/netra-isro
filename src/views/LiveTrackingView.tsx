@@ -159,6 +159,7 @@ export default function LiveTrackingView() {
               type="text"
               className="tracking-view__search-input"
               placeholder="SEARCH SATELLITE / NORAD / ISRO..."
+              aria-label="Search satellites by name, NORAD ID, or operator"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value)

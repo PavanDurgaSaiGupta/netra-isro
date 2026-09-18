@@ -57,6 +57,12 @@ export default function SatelliteCatalogView() {
 
   return (
     <div className="catalog-view">
+      <header className="catalog-view__header">
+        <span className="hud-text kicker">FLEET INVENTORY & TELEMETRY</span>
+        <h1 className="display" style={{ fontSize: '20px', margin: '4px 0 12px' }}>
+          SPACE OBJECT CATALOG — LIVE ORBITAL INVENTORY
+        </h1>
+      </header>
       {/* Control Strip */}
       <div className="catalog-view__toolbar">
         <div className="catalog-view__search-wrap">
@@ -65,6 +71,7 @@ export default function SatelliteCatalogView() {
             type="text"
             className="catalog-view__search-input hud-text"
             placeholder="FILTER CATALOG BY NAME, NORAD ID, OPERATOR..."
+            aria-label="Filter catalog by name, NORAD ID, or operator"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             spellCheck={false}
@@ -156,7 +163,7 @@ export default function SatelliteCatalogView() {
                         }}
                       />
                       <div>
-                        <h3 className="catalog-card__name">{sat.name}</h3>
+                        <h2 className="catalog-card__name">{sat.name}</h2>
                         <span className="catalog-card__operator hud-text">{sat.operator}</span>
                       </div>
                     </div>

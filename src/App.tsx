@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { SatelliteProvider } from './context/SatelliteContext'
 import Sidebar from './components/shell/Sidebar'
@@ -7,13 +7,14 @@ import SSATicker from './components/SSATicker'
 import TacticalCursor from './components/TacticalCursor'
 import MissionPreloader from './components/shell/MissionPreloader'
 import MobileBottomNav from './components/shell/MobileBottomNav'
+import DataSkeleton from './components/shell/DataSkeleton'
 
-import LandingPageView from './views/LandingPageView'
-import LiveTrackingView from './views/LiveTrackingView'
-import SatelliteCatalogView from './views/SatelliteCatalogView'
-import DebrisAnalysisView from './views/DebrisAnalysisView'
-import AlertsView from './views/AlertsView'
-import AboutView from './views/AboutView'
+const LandingPageView = lazy(() => import('./views/LandingPageView'))
+const LiveTrackingView = lazy(() => import('./views/LiveTrackingView'))
+const SatelliteCatalogView = lazy(() => import('./views/SatelliteCatalogView'))
+const DebrisAnalysisView = lazy(() => import('./views/DebrisAnalysisView'))
+const AlertsView = lazy(() => import('./views/AlertsView'))
+const AboutView = lazy(() => import('./views/AboutView'))
 
 export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -40,16 +41,18 @@ export default function App() {
             />
             <SSATicker />
             <main className="app-shell__viewport" id="main-content" tabIndex={-1}>
-              <Routes>
-                <Route path="/" element={<LandingPageView />} />
-                <Route path="/overview" element={<LandingPageView />} />
-                <Route path="/tracking" element={<LiveTrackingView />} />
-                <Route path="/catalog" element={<SatelliteCatalogView />} />
-                <Route path="/debris" element={<DebrisAnalysisView />} />
-                <Route path="/alerts" element={<AlertsView />} />
-                <Route path="/about" element={<AboutView />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+              <Suspense fallback={<div style={{ padding: 'var(--space-6)' }}><DataSkeleton count={6} height={56} /></div>}>
+                <Routes>
+                  <Route path="/" element={<LandingPageView />} />
+                  <Route path="/overview" element={<LandingPageView />} />
+                  <Route path="/tracking" element={<LiveTrackingView />} />
+                  <Route path="/catalog" element={<SatelliteCatalogView />} />
+                  <Route path="/debris" element={<DebrisAnalysisView />} />
+                  <Route path="/alerts" element={<AlertsView />} />
+                  <Route path="/about" element={<AboutView />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Suspense>
             </main>
             <MobileBottomNav />
           </div>

@@ -80,11 +80,13 @@ export default function TopBar({ mobileMenuOpen = false, onToggleMobileMenu }: T
         <span className="app-topbar__hamburger-text hud-text">MENU</span>
       </button>
 
-      {/* Left title & context */}
+      {/* Left title & context — single h1, mobile text switches via CSS */}
       <div className="app-topbar__left">
         <span className="app-topbar__kicker hud-text">{currentInfo.tag}</span>
-        <h1 className="app-topbar__title app-topbar__title--desktop">{currentInfo.title}</h1>
-        <h1 className="app-topbar__title app-topbar__title--mobile">{currentInfo.shortTitle}</h1>
+        <h1 className="app-topbar__title">
+          <span className="app-topbar__title--desktop">{currentInfo.title}</span>
+          <span className="app-topbar__title--mobile" aria-hidden="true">{currentInfo.shortTitle}</span>
+        </h1>
       </div>
 
       {/* Center live clock & orbital cycle */}

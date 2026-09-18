@@ -200,7 +200,8 @@ export default function DebrisAnalysisView() {
         </div>
 
         <div className="debris-table-wrap">
-          <table className="catalog-table">
+          <table className="catalog-table" aria-label="Active close-approach screening matrix for next 48 hours">
+            <caption className="sr-only">Conjunction screening matrix — next 48 hours, sorted by miss distance and collision probability</caption>
             <thead>
               <tr className="hud-text">
                 <th>STATUS</th>
