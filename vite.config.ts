@@ -6,16 +6,10 @@ export default defineConfig({
   plugins: [react()],
   base: '/netra-isro/',
   build: {
-    chunkSizeWarningLimit: 600,
-    rollupOptions: {
-      output: {
-        manualChunks(id: string) {
-          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('react-router')) return 'vendor'
-          if (id.includes('node_modules/three') || id.includes('@react-three')) return 'three'
-          if (id.includes('node_modules/gsap') || id.includes('animejs')) return 'motion'
-          return undefined
-        },
-      },
-    },
+    // No manualChunks: forcing 'three' into a named chunk made it a static dependency of
+    // the entry (react-dom was misrouted into it under Rolldown), so every page — including
+    // the landing route — preloaded the 1.1 MB three runtime. Letting three/fiber follow
+    // their only importer (the lazy /tracking view) drops initial landing JS ~4x.
+    chunkSizeWarningLimit: 1000,
   },
 })

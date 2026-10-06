@@ -1,26 +1,46 @@
 import { useEffect, useState } from 'react'
-import { useLocation, Link } from 'react-router-dom'
-import { isSoundEnabled, toggleSound, playBlip } from '../../utils/audio'
+import { Link, useLocation } from 'react-router-dom'
 import { useSatellites } from '../../context/SatelliteContext'
+import OdometerNumber from './OdometerNumber'
 
-const istFormatter = new Intl.DateTimeFormat('en-IN', {
+/**
+ * Mission clock instrument.
+ * - Left: NETRA wordmark + live uplink status dot (pulses when SYNCING, via data-status).
+ * - Center: IST clock and orbital cycle rendered through OdometerNumber — the odometer
+ *   primitive owns all rolling animation; this component only feeds it 1s / 90s values.
+ * - Right: mode segment (aria-current), fleet count, audio toggle, classification.
+ * The route h1 intentionally lives in each view, not here (single-h1-per-page rule).
+ */
+
+const istClockFormatter = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Kolkata',
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
   hour: '2-digit',
   minute: '2-digit',
   second: '2-digit',
-  hour12: false,
+  hourCycle: 'h23',
 })
 
-const ROUTE_TITLES: Record<string, { title: string; tag: string; shortTitle: string }> = {
-  '/overview': { title: 'MISSION OVERVIEW // BRIEFING', tag: 'BHARAT SSA', shortTitle: 'OVERVIEW' },
-  '/tracking': { title: 'ORBITAL SURVEILLANCE COCKPIT', tag: 'SGP4 REAL-TIME', shortTitle: '3D COCKPIT' },
-  '/catalog': { title: 'SPACE OBJECT INVENTORY & TELEMETRY', tag: 'FLEET CATALOG', shortTitle: 'CATALOG' },
-  '/debris': { title: 'DEBRIS ENVIRONMENT & RISKS', tag: 'KESSLER ANALYSIS', shortTitle: 'DEBRIS' },
-  '/alerts': { title: 'MISSION LOGS & CONJUNCTIONS', tag: 'DSSAM STREAM', shortTitle: 'ALERTS' },
-  '/about': { title: 'PROJECT NETRA // SPECIFICATION', tag: 'ISRO SSA', shortTitle: 'ABOUT' },
+function istClockValue(date: Date): number {
+  const parts = istClockFormatter.formatToParts(date)
+  const read = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0)
+  return read('hour') * 10000 + read('minute') * 100 + read('second')
+}
+
+/**
+ * Formats the rolling HHMMSS integer as clock text. Minute/second fields are clamped
+ * to 59 so intermediate frames of the odometer tween never render impossible times.
+ */
+function formatClockDigits(n: number): string {
+  const total = Math.max(0, Math.round(n))
+  const h = Math.min(23, Math.floor(total / 10000))
+  const m = Math.min(59, Math.floor((total % 10000) / 100))
+  const s = Math.min(59, total % 100)
+  const pad = (v: number) => String(v).padStart(2, '0')
+  return `${pad(h)}:${pad(m)}:${pad(s)}`
+}
+
+function formatCycleDigits(n: number): string {
+  return String(Math.max(0, Math.round(n))).padStart(4, '0')
 }
 
 interface TopBarProps {
@@ -30,93 +50,88 @@ interface TopBarProps {
 
 export default function TopBar({ mobileMenuOpen = false, onToggleMobileMenu }: TopBarProps) {
   const location = useLocation()
-  const { satellites, loading } = useSatellites()
-  const [time, setTime] = useState(() => istFormatter.format(new Date()))
+  const { satellites, loading, apiStatus } = useSatellites()
+  const [clockValue, setClockValue] = useState(() => istClockValue(new Date()))
   const [cycle, setCycle] = useState(2486)
-  const [soundActive, setSoundActive] = useState(() => isSoundEnabled())
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTime(istFormatter.format(new Date()))
-    }, 1000)
+    const timer = setInterval(() => setClockValue(istClockValue(new Date())), 1000)
     return () => clearInterval(timer)
   }, [])
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCycle((c) => c + 1)
-    }, 90000)
+    const timer = setInterval(() => setCycle((c) => c + 1), 90000)
     return () => clearInterval(timer)
   }, [])
 
-  const currentInfo = ROUTE_TITLES[location.pathname] || {
-    title: 'MISSION OPERATIONS CONSOLE',
-    tag: 'ISRO DSSAM SENSORS',
-    shortTitle: 'NETRA CONSOLE',
-  }
-
-  const handleAudioToggle = () => {
-    const next = toggleSound()
-    setSoundActive(next)
-    playBlip(next ? 1400 : 700, 0.04)
-  }
+  const overviewActive = location.pathname === '/overview'
+  const trackingActive = location.pathname === '/tracking'
 
   return (
     <header className="app-topbar" aria-label="Operations Status Bar">
-      {/* Mobile Hamburger Menu Toggle Button */}
+      {/* Mobile hamburger menu toggle */}
       <button
         type="button"
         className="app-topbar__hamburger-btn"
         onClick={() => {
-          playBlip(1100, 0.03)
           onToggleMobileMenu?.()
         }}
         aria-label={mobileMenuOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
         aria-expanded={mobileMenuOpen}
+        /* Hit-area floor (WCAG 2.2 AA 2.5.8); CSS padding already yields ~26px, this only guards it */
+        style={{ minWidth: 24, minHeight: 24 }}
       >
-        <span className="app-topbar__hamburger-icon">
-          {mobileMenuOpen ? '✕' : '☰'}
-        </span>
+        <span className="app-topbar__hamburger-icon">{mobileMenuOpen ? '✕' : '☰'}</span>
         <span className="app-topbar__hamburger-text hud-text">MENU</span>
       </button>
 
-      {/* Left title & context — single h1, mobile text switches via CSS */}
+      {/* Wordmark + uplink status */}
       <div className="app-topbar__left">
-        <span className="app-topbar__kicker hud-text">{currentInfo.tag}</span>
-        <h1 className="app-topbar__title">
-          <span className="app-topbar__title--desktop">{currentInfo.title}</span>
-          <span className="app-topbar__title--mobile" aria-hidden="true">{currentInfo.shortTitle}</span>
-        </h1>
+        <span className="app-topbar__wordmark">NETRA</span>
+        <span className="app-topbar__uplink hud-text" data-status={apiStatus}>
+          <span className="app-topbar__status-dot" aria-hidden="true" />
+          <span className="app-topbar__uplink-label">UPLINK {apiStatus}</span>
+        </span>
       </div>
 
-      {/* Center live clock & orbital cycle */}
+      {/* Mission clock: odometer digits for IST time and orbital cycle */}
       <div className="app-topbar__center hud-text">
-        <div className="app-topbar__clock">
-          <span className="hud__faint">IST:</span>
-          <span className="app-topbar__time">{time}</span>
+        <div className="app-topbar__clock topbar__clock">
+          <span className="hud__faint">IST</span>
+          <OdometerNumber value={clockValue} format={formatClockDigits} className="app-topbar__time" />
         </div>
-        <span className="app-topbar__divider">/</span>
-        <div className="app-topbar__cycle">
-          <span className="hud__faint">CYCLE:</span>
-          <span style={{ color: 'var(--accent-orange)' }}>{cycle}</span>
+        <span className="app-topbar__divider" aria-hidden="true">
+          /
+        </span>
+        <div className="app-topbar__cycle topbar__cycle">
+          <span className="hud__faint">CYCLE</span>
+          <OdometerNumber
+            value={cycle}
+            format={formatCycleDigits}
+            className="app-topbar__cycle-value"
+          />
         </div>
       </div>
 
       {/* Right controls and fleet count */}
       <div className="app-topbar__right hud-text">
-        {/* Mode Segment Switcher (Desktop) */}
+        {/* Mode segment switcher (desktop) */}
         <div className="app-topbar__mode-segment">
           <Link
             to="/overview"
-            className={`app-topbar__mode-tab ${location.pathname === '/overview' ? 'app-topbar__mode-tab--active' : ''}`}
-            onClick={() => playBlip(1100, 0.02)}
+            aria-current={overviewActive ? 'page' : undefined}
+            className={`app-topbar__mode-tab ${overviewActive ? 'app-topbar__mode-tab--active' : ''}`}
+            /* Hit-area fix (2.5.8): CSS padding 3px 11px yields ~21px height; inline
+               elements ignore min-height, so the anchor is made inline-flex here */
+            style={{ display: 'inline-flex', alignItems: 'center', minHeight: 24 }}
           >
             OVERVIEW
           </Link>
           <Link
             to="/tracking"
-            className={`app-topbar__mode-tab ${location.pathname !== '/overview' ? 'app-topbar__mode-tab--active' : ''}`}
-            onClick={() => playBlip(1300, 0.02)}
+            aria-current={trackingActive ? 'page' : undefined}
+            className={`app-topbar__mode-tab ${trackingActive ? 'app-topbar__mode-tab--active' : ''}`}
+            style={{ display: 'inline-flex', alignItems: 'center', minHeight: 24 }}
           >
             COCKPIT
           </Link>
@@ -124,26 +139,13 @@ export default function TopBar({ mobileMenuOpen = false, onToggleMobileMenu }: T
 
         {/* Tracked count pill */}
         <div className="app-topbar__stat-pill">
-          <span className="app-topbar__status-dot" />
+          <span className="app-topbar__status-dot" aria-hidden="true" />
           <span className="app-topbar__stat-text">
             {loading ? 'SYNCING...' : `${satellites.length} OBJECTS`}
           </span>
         </div>
 
-        {/* Audio Synthesizer toggle */}
-        <button
-          className="app-topbar__audio-btn u-link"
-          onClick={handleAudioToggle}
-          title="Toggle Web Audio Mission Control sounds"
-          aria-label="Toggle Mission Control Audio"
-        >
-          <span className="app-topbar__audio-label--desktop">
-            {soundActive ? '🔊 AUDIO: ON' : '🔈 AUDIO: MUTED'}
-          </span>
-          <span className="app-topbar__audio-label--mobile">
-            {soundActive ? '🔊' : '🔈'}
-          </span>
-        </button>
+        {/* Audio synthesizer toggle removed — audio is gone from the app */}
 
         {/* Defense classification */}
         <div className="app-topbar__security-badge">

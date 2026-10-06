@@ -1,6 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
-import gsap from 'gsap'
-import { playBlip, playLockSound } from '../../utils/audio'
+import { gsap, prefersReducedMotion, useGSAP } from '../../lib/motion'
+
+/**
+ * Diagnostic row reset styles: the rows are real <button>s (keyboard + SR access)
+ * styled inline to restore the plain-div look, since index.css is not owned here.
+ * `.sys-panel__row` (flex layout, 3px 0 padding, font-size) keeps applying via class.
+ * minHeight: 24 keeps each target at the WCAG 2.2 AA 2.5.8 floor.
+ */
+const DIAGNOSTIC_ROW_BUTTON_RESET: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: 'inherit',
+  fontFamily: 'inherit',
+  fontWeight: 'inherit',
+  letterSpacing: 'inherit',
+  textAlign: 'left',
+  width: '100%',
+  minHeight: 24,
+  cursor: 'pointer',
+}
 
 interface Subsystem {
   id: string
@@ -23,26 +41,28 @@ export default function SystemStatusPanel() {
   const [subsystems, setSubsystems] = useState<Subsystem[]>(INITIAL_SUBSYSTEMS)
   const panelRef = useRef<HTMLDivElement>(null)
 
-  // Stagger reveal on mount
-  useEffect(() => {
-    if (!panelRef.current) return
-    const rows = panelRef.current.querySelectorAll('.sys-panel__row')
-    gsap.fromTo(
-      rows,
-      { opacity: 0, x: 12 },
-      { opacity: 1, x: 0, duration: 0.5, stagger: 0.09, ease: 'power2.out' }
-    )
-  }, [])
+  // Stagger reveal on mount (GSAP via useGSAP per contract §3; snaps under reduced motion)
+  useGSAP(
+    () => {
+      if (!panelRef.current) return
+      if (prefersReducedMotion()) return
+      const rows = panelRef.current.querySelectorAll('.sys-panel__row')
+      gsap.fromTo(
+        rows,
+        { opacity: 0, x: 12 },
+        { opacity: 1, x: 0, duration: 0.5, stagger: 0.09, ease: 'power2.out' }
+      )
+    },
+    { scope: panelRef }
+  )
 
   // Manual subsystem diagnostics on row click
   const handleTestSubsystem = (id: string) => {
-    playBlip(1400, 0.03)
     setSubsystems((prev) =>
       prev.map((sub) => (sub.id === id ? { ...sub, status: 'calibrating', statusText: 'PINGING...' } : sub))
     )
 
     setTimeout(() => {
-      playLockSound()
       setSubsystems((prev) =>
         prev.map((sub) =>
           sub.id === id ? { ...sub, status: 'nominal', statusText: 'VERIFIED ✓' } : sub
@@ -79,7 +99,7 @@ export default function SystemStatusPanel() {
   }, [])
 
   return (
-    <div className="sys-panel" ref={panelRef} aria-label="ISRO Subsystems Telemetry Status">
+    <div className="sys-panel" ref={panelRef} role="group" aria-label="ISRO Subsystems Telemetry Status">
       <div className="sys-panel__header hud-text">
         <div className="sys-panel__title-wrap">
           <span className="sys-panel__badge-dot" />
@@ -93,15 +113,18 @@ export default function SystemStatusPanel() {
           const isDegraded = sub.status === 'degraded'
           const isCalibrating = sub.status === 'calibrating'
           return (
-            <div
+            <button
               key={sub.id}
+              type="button"
               className={`sys-panel__row sys-panel__row--interactive ${
                 isDegraded ? 'sys-panel__row--degraded' : isCalibrating ? 'sys-panel__row--calibrating' : ''
               }`}
               onClick={() => handleTestSubsystem(sub.id)}
-              title={`Click to run diagnostic test on ${sub.name}`}
+              aria-label={`${sub.name} — run diagnostic test`}
+              title={`Run diagnostic test on ${sub.name}`}
+              style={DIAGNOSTIC_ROW_BUTTON_RESET}
             >
-              <div className="sys-panel__row-left">
+              <span className="sys-panel__row-left">
                 <span
                   className={`sys-panel__dot ${
                     isDegraded
@@ -112,8 +135,8 @@ export default function SystemStatusPanel() {
                   }`}
                 />
                 <span className="sys-panel__name">{sub.name}</span>
-              </div>
-              <div className="sys-panel__row-right hud-text">
+              </span>
+              <span className="sys-panel__row-right hud-text">
                 <span className="sys-panel__code hud__faint">{sub.subcode}</span>
                 <span
                   className={`sys-panel__status-val ${
@@ -122,8 +145,8 @@ export default function SystemStatusPanel() {
                 >
                   {sub.statusText}
                 </span>
-              </div>
-            </div>
+              </span>
+            </button>
           )
         })}
       </div>

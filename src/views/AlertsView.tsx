@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useSatellites, type AlertLogItem } from '../context/SatelliteContext'
 import AlertsFeed from '../components/console/AlertsFeed'
-import { playBlip, playLockSound } from '../utils/audio'
+import { DUR, EASE, gsap, prefersReducedMotion, useGSAP } from '../lib/motion'
 
 type CategoryFilter = 'ALL' | AlertLogItem['category']
 
@@ -61,6 +61,37 @@ export default function AlertsView() {
   const { alerts, addAlert } = useSatellites()
   const [filterCat, setFilterCat] = useState<CategoryFilter>('ALL')
   const [downloadSuccess, setDownloadSuccess] = useState(false)
+  const mainPanelRef = useRef<HTMLDivElement>(null)
+
+  // Wire-feed choreography (contract §4): every heartbeat append slides the
+  // newest line in from the top with the capture easing. The auto-append
+  // interval itself stays the heartbeat inside AlertsFeed. The tween is
+  // deferred one tick so it is created after AlertsFeed's own row tween and
+  // cleanly wins the conflicting opacity/y properties.
+  useGSAP(
+    () => {
+      if (prefersReducedMotion()) return
+      const firstRow = mainPanelRef.current?.querySelector<HTMLElement>(
+        '.alerts-feed__item:first-child',
+      )
+      if (!firstRow) return
+      gsap.delayedCall(0, () => {
+        gsap.killTweensOf(firstRow, 'opacity,y')
+        gsap.fromTo(
+          firstRow,
+          { opacity: 0, y: -14 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: DUR.FAST,
+            ease: EASE.CAPTURE,
+            overwrite: 'auto',
+          },
+        )
+      })
+    },
+    { scope: mainPanelRef, dependencies: [alerts.length] },
+  )
 
   const filtered = alerts.filter((a) => {
     if (filterCat === 'ALL') return true
@@ -68,7 +99,6 @@ export default function AlertsView() {
   })
 
   const handleSimulateAlert = () => {
-    playLockSound()
     addAlert(
       'CONJUNCTION EARLY WARNING: RISK ELEVATED FOR RISAT-2B vs IRIDIUM-33 DEBRIS (MISS 0.74 KM)',
       'CONJUNCTION',
@@ -77,7 +107,6 @@ export default function AlertsView() {
   }
 
   const handleExportLogs = () => {
-    playLockSound()
     const json = JSON.stringify(alerts, null, 2)
     const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -124,8 +153,8 @@ export default function AlertsView() {
           <button
             key={cat}
             className={`alerts-view__tab ${filterCat === cat ? 'alerts-view__tab--active' : ''}`}
+            aria-pressed={filterCat === cat}
             onClick={() => {
-              playBlip(1100, 0.02)
               setFilterCat(cat)
             }}
           >
@@ -139,7 +168,7 @@ export default function AlertsView() {
 
       {/* Embedded Live Feed and Detailed Log Table */}
       <div className="alerts-view__grid">
-        <div className="alerts-view__main-panel">
+        <div className="alerts-view__main-panel" role="log" aria-live="polite" ref={mainPanelRef}>
           <AlertsFeed maxLines={24} showHeader={false} />
         </div>
 

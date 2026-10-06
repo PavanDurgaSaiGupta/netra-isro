@@ -4,7 +4,7 @@ export default function Footer() {
       <div className="footer__grid">
         <div>
           <div style={{ color: 'var(--text-primary)', fontWeight: 700, marginBottom: 'var(--space-3)' }}>
-            NETRA <span style={{ color: 'var(--accent-orange)' }}>—</span> BHARAT'S EYES IN ORBIT
+            NETRA <span style={{ color: 'var(--accent-orange)' }}>·</span> BHARAT'S EYES IN ORBIT
           </div>
           <small>
             Concept project, not an official ISRO product. Not affiliated with or endorsed by the
@@ -21,7 +21,7 @@ export default function Footer() {
             TYPE: ORBITRON • SPACE MONO • INTER (GOOGLE FONTS)
           </small>
           <small style={{ textAlign: 'right' }}>
-            BUILT WITH REACT • THREE.JS • GSAP • ANIME.JS
+            BUILT WITH REACT • THREE.JS • GSAP • LENIS
             <br />
             SGP4 PROPAGATION: SATELLITE.JS
             <br />

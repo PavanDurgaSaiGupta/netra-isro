@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import gsap from 'gsap'
 import { useSatellites } from '../../context/SatelliteContext'
-import { playBlip } from '../../utils/audio'
 
 const RANDOM_EVENTS = [
   'TLE EPHEMERIS SYNCED WITH CELESTRAK GP FEED (NORAD ID: 44233)',
@@ -30,7 +29,6 @@ export default function AlertsFeed({ maxLines = 8, showHeader = true, className 
       const msg = RANDOM_EVENTS[Math.floor(Math.random() * RANDOM_EVENTS.length)]
       const isWarn = msg.includes('DEBRIS') || msg.includes('SOLAR')
       addAlert(msg, isWarn ? 'CONJUNCTION' : 'TLE', isWarn ? 'warning' : 'nominal')
-      playBlip(1600, 0.015)
     }, 9500)
 
     return () => clearInterval(timer)

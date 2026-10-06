@@ -1,8 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { animate, stagger } from 'animejs'
-import gsap from 'gsap'
-import { playBlip, playLockSound } from '../utils/audio'
+import { DUR, EASE, gsap, stagger, useGSAP } from '../lib/motion'
 
 const BRACKET_LINE = ['SPACE', 'IS', 'BHARAT’S', 'NEXT', 'FRONTIER']
 
@@ -10,34 +8,39 @@ export default function Hero() {
   const rootRef = useRef<HTMLElement>(null)
   const cueRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    // Word-by-word reveal using anime.js
-    if (rootRef.current) {
-      const words = rootRef.current.querySelectorAll('.hero-word')
-      if (words.length > 0) {
-        animate(Array.from(words), {
-          opacity: [0, 1],
-          translateY: [16, 0],
-          duration: 700,
-          delay: stagger(90, { start: 350 }),
-          ease: 'outQuad',
+  useGSAP(
+    () => {
+      // Reduced motion: no JS at all — the default DOM (visible words, still cue)
+      // IS the end-state; gsap.matchMedia re-evaluates if the OS setting changes.
+      const mm = gsap.matchMedia()
+      mm.add('(prefers-reduced-motion: no-preference)', () => {
+        // Word-by-word assemble — stagger 90ms, entrance deceleration (contract §4)
+        gsap.fromTo(
+          '.hero-word',
+          { autoAlpha: 0, y: 16 },
+          {
+            autoAlpha: 1,
+            y: 0,
+            duration: DUR.slow,
+            ease: EASE.entrance,
+            delay: 0.35,
+            stagger: stagger(BRACKET_LINE.length, 0.09),
+          },
+        )
+
+        // Bouncing scroll cue (ambient loop)
+        gsap.to(cueRef.current, {
+          y: 8,
+          repeat: -1,
+          yoyo: true,
+          duration: 0.9,
+          ease: 'power1.inOut',
         })
-      }
-    }
-
-    // Bouncing scroll cue (GSAP)
-    const bounce = gsap.to(cueRef.current, {
-      y: 8,
-      repeat: -1,
-      yoyo: true,
-      duration: 0.9,
-      ease: 'power1.inOut',
-    })
-
-    return () => {
-      bounce.kill()
-    }
-  }, [])
+      })
+      return () => mm.revert()
+    },
+    { scope: rootRef, dependencies: [] },
+  )
 
   return (
     <section className="hero" ref={rootRef} id="top">
@@ -86,14 +89,12 @@ export default function Hero() {
           <Link
             to="/tracking"
             className="btn-primary"
-            onClick={() => playLockSound()}
           >
             ENTER 3D COCKPIT ↗
           </Link>
           <Link
             to="/catalog"
             className="u-link hud-text"
-            onClick={() => playBlip(1100, 0.02)}
           >
             VIEW SATELLITE CATALOG →
           </Link>

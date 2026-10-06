@@ -6,7 +6,6 @@ import {
   fetchLiveCelesTrak,
   formatIST,
 } from '../services/satelliteData'
-import { playLockSound } from '../utils/audio'
 
 export interface ISSData {
   latitude: number
@@ -47,6 +46,17 @@ interface SatelliteContextType {
   apiStatus: 'ONLINE' | 'SYNCING' | 'STANDBY'
   lastSyncTime: string
   refreshData: () => Promise<void>
+  /** Mission sim time (ms epoch) — satellites propagate at this instant, not wall clock. */
+  simTime: number
+  /** Sim-time rate multiplier: 1 = live, 0 = paused, 10 / 60 = fast-forward. */
+  timeRate: number
+  /** sim time − wall clock (ms). ≈0 while live; grows while paused or scrubbed. */
+  timeOffsetMs: number
+  setTimeRate: (rate: number) => void
+  /** Move sim time by deltaMs (negative = into the past) and tick immediately. */
+  scrubTime: (deltaMs: number) => void
+  /** Snap sim time back to the wall clock (offset 0) and restore rate 1. */
+  goLive: () => void
 }
 
 const INITIAL_ALERTS: AlertLogItem[] = [
@@ -94,6 +104,8 @@ const INITIAL_ALERTS: AlertLogItem[] = [
 
 const SatelliteContext = createContext<SatelliteContextType | undefined>(undefined)
 
+const SEED_TLES = new Set(SEED_CATALOG.map((s) => `${s.tle1}|${s.tle2}`))
+
 export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [rawCatalog, setRawCatalog] = useState(SEED_CATALOG)
   const [loading] = useState(false)
@@ -102,19 +114,33 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const requestRef = useRef(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterRegime, setFilterRegime] = useState<'ALL' | 'ISRO' | 'DEBRIS' | 'LEO' | 'MEO' | 'GEO'>('ALL')
-  const [issData, setIssData] = useState<ISSData | null>(null)
+  const [issData] = useState<ISSData | null>(null)
   const [alerts, setAlerts] = useState<AlertLogItem[]>(INITIAL_ALERTS)
   const [tick, setTick] = useState(() => Date.now())
+
+  // Mission time (item 7). The 1.5 s interval now advances a sim-time ref instead of
+  // reading the wall clock, so every consumer keeps propagating at `tick` with zero
+  // API change — `tick` simply *is* sim time from here on. Nominal cadence per the
+  // contract: simTimeRef += 1500 * rate per tick; we advance by the real elapsed gap
+  // (which is that same 1500 * rate on schedule) so rate 1 never accumulates
+  // setInterval scheduling jitter and stays glued to the wall clock. Refs seed from
+  // the mount-time `tick` (lazy useState initializer — keeps render pure).
+  const simTimeRef = useRef(tick)
+  const timeRateRef = useRef(1)
+  const lastTickAtRef = useRef(tick)
+  const [timeRate, setTimeRateState] = useState(1)
+  const [timeOffsetMs, setTimeOffsetMs] = useState(0)
+
   const [apiStatus, setApiStatus] = useState<'ONLINE' | 'SYNCING' | 'STANDBY'>('SYNCING')
   const [lastSyncTime, setLastSyncTime] = useState('DEMO ELEMENTS')
   const [recenterTrigger, setRecenterTrigger] = useState(0)
   const [resetViewTrigger, setResetViewTrigger] = useState(0)
 
-  const triggerRecenter = () => setRecenterTrigger((t) => t + 1)
-  const triggerResetView = () => {
+  const triggerRecenter = useCallback(() => setRecenterTrigger((t) => t + 1), [])
+  const triggerResetView = useCallback(() => {
     setSelectedId(null)
     setResetViewTrigger((t) => t + 1)
-  }
+  }, [])
 
   const loadData = useCallback(async () => {
     const request = ++requestRef.current
@@ -135,66 +161,73 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => { requestRef.current++ }
   }, [loadData])
 
-  // Propagate all satellites every 1.5 seconds using satellite.js SGP4
+  // Propagate all satellites every 1.5 seconds using satellite.js SGP4 — at sim time.
   useEffect(() => {
-    const id = setInterval(() => setTick(Date.now()), 1500)
+    const id = setInterval(() => {
+      const now = Date.now()
+      const elapsed = Math.min(Math.max(now - lastTickAtRef.current, 0), 60000)
+      lastTickAtRef.current = now
+      simTimeRef.current += Math.round(elapsed * timeRateRef.current)
+      setTick(simTimeRef.current)
+      setTimeOffsetMs(simTimeRef.current - now)
+    }, 1500)
     return () => clearInterval(id)
   }, [])
 
-  // Poll Where The ISS At every 5 seconds
-  useEffect(() => {
-    let active = true
-    const fetchISS = async () => {
-      try {
-        const res = await fetch('https://api.wheretheiss.at/v1/satellites/25544', {
-          signal: AbortSignal.timeout(3500),
-        })
-        if (res.ok) {
-          const data = await res.json()
-          if (active) {
-            setIssData({
-              latitude: data.latitude,
-              longitude: data.longitude,
-              altitude: data.altitude,
-              velocity: data.velocity,
-              visibility: data.visibility,
-              timestamp: data.timestamp,
-            })
-          }
-        }
-      } catch {
-        // graceful fallback
-      }
-    }
-    fetchISS()
-    const id = setInterval(fetchISS, 5000)
-    return () => {
-      active = false
-      clearInterval(id)
-    }
+  // Mission-time control surface (item 7). Rate lives in a ref (read by the interval)
+  // mirrored by state (read by the cockpit HUD); scrubbing moves sim time and ticks
+  // immediately so the whole console reacts in the same frame.
+  const setTimeRate = useCallback((rate: number) => {
+    const next = Number.isFinite(rate) ? Math.max(0, rate) : 1
+    timeRateRef.current = next
+    setTimeRateState(next)
   }, [])
+
+  const scrubTime = useCallback((deltaMs: number) => {
+    if (!Number.isFinite(deltaMs) || deltaMs === 0) return
+    simTimeRef.current += deltaMs
+    setTick(simTimeRef.current)
+    setTimeOffsetMs(simTimeRef.current - Date.now())
+  }, [])
+
+  const goLive = useCallback(() => {
+    const now = Date.now()
+    simTimeRef.current = now
+    lastTickAtRef.current = now
+    timeRateRef.current = 1
+    setTimeRateState(1)
+    setTimeOffsetMs(0)
+    setTick(now)
+  }, [])
+
+  // Poll Where The ISS At — OverheadRadar owns the only ISS poll; the previous 5 s poll here
+  // stored into issData that no component reads (dead requests + a provider re-render every 5 s).
 
   // Compute live states
   const satellites = useMemo(() => {
     const now = new Date(tick)
     return rawCatalog
-      .map((item) => computeState(item, now, SEED_CATALOG.some((seed) => seed.tle1 === item.tle1 && seed.tle2 === item.tle2) ? 'seed' : dataSource))
+      .map((item) => computeState(item, now, SEED_TLES.has(`${item.tle1}|${item.tle2}`) ? 'seed' : dataSource))
       .filter((s): s is SatelliteItem => Boolean(s))
   }, [rawCatalog, tick, dataSource])
 
   const selectedSat = satellites.find((sat) => sat.id === selectedId) ?? null
 
-  const setSelectedSat = (sat: SatelliteItem | null) => {
-    if (sat) playLockSound()
+  // Stable callbacks: consumers key effects on these (e.g. AlertsFeed's auto-append
+  // interval on addAlert) — a fresh identity every render silently killed those effects.
+  const setSelectedSat = useCallback((sat: SatelliteItem | null) => {
     setSelectedId(sat?.id ?? null)
-  }
+  }, [])
 
-  const selectSatelliteById = (id: string) => {
-    const found = satellites.find((s) => s.id === id || String(s.noradId) === id)
-    if (found) {
-      setSelectedSat(found)
-    }
-  }
+  const selectSatelliteById = useCallback(
+    (id: string) => {
+      const found = satellites.find((s) => s.id === id || String(s.noradId) === id)
+      if (found) {
+        setSelectedSat(found)
+      }
+    },
+    [satellites, setSelectedSat],
+  )
 
   // Filter satellites based on query and regime
   const filteredSatellites = useMemo(() => {
@@ -217,51 +250,82 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     })
   }, [satellites, searchQuery, filterRegime])
 
-  const addAlert = (
-    message: string,
-    category: AlertLogItem['category'] = 'SYSTEM',
-    severity: AlertLogItem['severity'] = 'nominal',
-  ) => {
-    const now = new Date()
-    const hh = String(now.getHours()).padStart(2, '0')
-    const mm = String(now.getMinutes()).padStart(2, '0')
-    const ss = String(now.getSeconds()).padStart(2, '0')
-    const item: AlertLogItem = {
-      id: 'alt-' + Date.now(),
-      timestamp: `${hh}:${mm}:${ss}`,
-      code: 'DSSAM-' + Math.floor(100 + Math.random() * 900),
-      category,
-      message,
-      severity,
-    }
-    setAlerts((prev) => [item, ...prev.slice(0, 19)])
-  }
+  const addAlert = useCallback(
+    (
+      message: string,
+      category: AlertLogItem['category'] = 'SYSTEM',
+      severity: AlertLogItem['severity'] = 'nominal',
+    ) => {
+      const item: AlertLogItem = {
+        id: `alt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: formatIST(new Date()),
+        code: 'DSSAM-' + Math.floor(100 + Math.random() * 900),
+        category,
+        message,
+        severity,
+      }
+      setAlerts((prev) => [item, ...prev.slice(0, 19)])
+    },
+    [],
+  )
+
+  const contextValue = useMemo(
+    () => ({
+      satellites,
+      loading,
+      selectedSat,
+      setSelectedSat,
+      searchQuery,
+      setSearchQuery,
+      filterRegime,
+      setFilterRegime,
+      filteredSatellites,
+      issData,
+      alerts,
+      addAlert,
+      selectSatelliteById,
+      recenterTrigger,
+      triggerRecenter,
+      resetViewTrigger,
+      triggerResetView,
+      apiStatus,
+      lastSyncTime,
+      refreshData: loadData,
+      simTime: tick,
+      timeRate,
+      timeOffsetMs,
+      setTimeRate,
+      scrubTime,
+      goLive,
+    }),
+    [
+      satellites,
+      selectedSat,
+      searchQuery,
+      filterRegime,
+      filteredSatellites,
+      issData,
+      alerts,
+      addAlert,
+      selectSatelliteById,
+      recenterTrigger,
+      triggerRecenter,
+      resetViewTrigger,
+      triggerResetView,
+      apiStatus,
+      lastSyncTime,
+      loadData,
+      tick,
+      timeRate,
+      timeOffsetMs,
+      setTimeRate,
+      scrubTime,
+      goLive,
+    ],
+  )
 
   return (
-    <SatelliteContext.Provider
-      value={{
-        satellites,
-        loading,
-        selectedSat,
-        setSelectedSat,
-        searchQuery,
-        setSearchQuery,
-        filterRegime,
-        setFilterRegime,
-        filteredSatellites,
-        issData,
-        alerts,
-        addAlert,
-        selectSatelliteById,
-        recenterTrigger,
-        triggerRecenter,
-        resetViewTrigger,
-        triggerResetView,
-        apiStatus,
-        lastSyncTime,
-        refreshData: loadData,
-      }}
-    >
+    <SatelliteContext.Provider value={contextValue}>
       {children}
     </SatelliteContext.Provider>
   )

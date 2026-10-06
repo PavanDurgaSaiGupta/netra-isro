@@ -6,6 +6,34 @@ export const CACHE_KEY = 'netra_celestrak_cache_v3'
 export const CACHE_TIME_KEY = 'netra_celestrak_time_v3'
 export const CACHE_TTL_MS = 15 * 60 * 1000
 
+// Live debris clouds — the seed catalog's frozen debris half is replaced by these
+// (the confirmed "222-days-stale seeds" finding). Fetched paced, capped per cloud.
+export const DEBRIS_GROUP_URLS = ['cosmos-2251-debris', 'fengyun-1c-debris', 'cosmos-1408-debris', 'iridium-33-debris'].map(
+  (group) => `https://celestrak.org/NORAD/elements/gp.php?GROUP=${group}&FORMAT=tle`,
+)
+const ETAG_KEY = 'netra_celestrak_etags_v1'
+
+export function readEtags(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(ETAG_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, string>
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+export function writeEtag(url: string, etag: string): void {
+  try {
+    const etags = readEtags()
+    etags[url] = etag
+    localStorage.setItem(ETAG_KEY, JSON.stringify(etags))
+  } catch {
+    // storage may be full or blocked — conditional requests just won't apply
+  }
+}
+
 import type { SeedItem } from './seedCatalog.js'
 export type { SeedItem } from './seedCatalog.js'
 
@@ -20,6 +48,7 @@ interface CelesTrakCachePayload {
   fetchedAt: number
   endpoint: string
   format: 'tle'
+  etags?: Record<string, string>
 }
 
 function tleChecksum(line: string): number {
@@ -60,7 +89,7 @@ export function readCelesTrakCache(): CelesTrakResult | null {
     const age = Date.now() - parsed.fetchedAt
     const fresh = Number.isFinite(parsed.fetchedAt) && age >= 0 && age < CACHE_TTL_MS
     const proven =
-      parsed.endpoint === CELESTRAK_TLE_URL &&
+      (parsed.endpoint === CELESTRAK_TLE_URL || parsed.endpoint === 'multi') &&
       parsed.format === 'tle' &&
       Array.isArray(parsed.items) &&
       parsed.items.length > 0 &&
@@ -83,12 +112,26 @@ export function readCelesTrakCache(): CelesTrakResult | null {
   }
 }
 
-export function writeCelesTrakCache(items: SeedItem[], fetchedAt: number): void {
-  const payload: CelesTrakCachePayload = { items, fetchedAt, endpoint: CELESTRAK_TLE_URL, format: 'tle' }
+export function writeCelesTrakCache(items: SeedItem[], fetchedAt: number, etags?: Record<string, string>): void {
+  const payload: CelesTrakCachePayload = { items, fetchedAt, endpoint: 'multi', format: 'tle', etags }
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(payload))
     localStorage.setItem(CACHE_TIME_KEY, String(fetchedAt))
   } catch {
     // storage may be full or blocked — seed fallback will be used
+  }
+}
+
+// Payload regardless of age — lets a 304 Not Modified refresh re-stamp a stale cache
+// instead of re-downloading a catalog that has not changed upstream.
+export function readCelesTrakPayloadAnyAge(): CelesTrakCachePayload | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CelesTrakCachePayload
+    if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) return null
+    return parsed
+  } catch {
+    return null
   }
 }

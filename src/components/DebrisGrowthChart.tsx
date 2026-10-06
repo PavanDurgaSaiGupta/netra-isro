@@ -1,9 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { createTimeline, stagger } from 'animejs'
-import gsap from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
-
-gsap.registerPlugin(ScrollTrigger)
+import { useRef, useState } from 'react'
+import { EASE, gsap, stagger, useGSAP } from '../lib/motion'
 
 // Tracked object history & projection (1810 -> 2100)
 // Pre-1957 is zero baseline (dotted). 1957 (Sputnik-1) begins catalogued space debris.
@@ -58,54 +54,51 @@ export default function DebrisGrowthChart() {
   const rootRef = useRef<HTMLElement>(null)
   const [activeMilestone, setActiveMilestone] = useState<number | null>(null)
 
-  useEffect(() => {
-    const root = rootRef.current
-    if (!root) return
+  useGSAP(
+    () => {
+      const root = rootRef.current
+      if (!root) return
 
-    const paths = root.querySelectorAll<SVGPathElement>('.chart__path, .chart__proj-path')
-    paths.forEach((p) => {
-      const len = p.getTotalLength()
-      p.style.strokeDasharray = `${len}`
-      p.style.strokeDashoffset = `${len}`
-    })
+      const paths = gsap.utils.toArray<SVGPathElement>('.chart__path, .chart__proj-path', root)
+      const gridCount = root.querySelectorAll('.chart__grid-line, .chart__axis-label').length
+      const markCount = root.querySelectorAll(
+        '.chart__today-line, .chart__today-dot, .chart__milestone',
+      ).length
 
-    const ctx = gsap.context(() => {
-      ScrollTrigger.create({
-        trigger: root,
-        start: 'top 75%',
-        once: true,
-        onEnter: () => {
-          const tl = createTimeline({ defaults: { ease: 'outQuad' } })
-          tl.add('.chart__grid-line, .chart__axis-label', {
-            opacity: [0, 1],
-            duration: 500,
-            delay: stagger(25),
-          })
-          if (paths[0]) {
-            tl.add(paths[0], {
-              strokeDashoffset: [paths[0].getTotalLength(), 0],
-              duration: 1600,
-              ease: 'outCubic',
-            }, '-=200')
-          }
-          if (paths[1]) {
-            tl.add(paths[1], {
-              strokeDashoffset: [paths[1].getTotalLength(), 0],
-              duration: 1200,
-              ease: 'outCubic',
-            }, '-=400')
-          }
-          tl.add('.chart__today-line, .chart__today-dot, .chart__milestone', {
-            opacity: [0, 1],
-            duration: 600,
-            delay: stagger(60),
-          }, '-=600')
-        },
+      // Reduced motion: no dash prep, no from-states — the fully drawn chart is the end-state.
+      const mm = gsap.matchMedia()
+      mm.add('(prefers-reduced-motion: no-preference)', () => {
+        // Draw-on prep; reverted automatically on cleanup (old code left these inline forever).
+        paths.forEach((p) => {
+          const len = p.getTotalLength()
+          gsap.set(p, { strokeDasharray: len, strokeDashoffset: len })
+        })
+
+        // Same choreography as before: grid fade → history draw → projection draw →
+        // today/milestones, with the same overlap offsets (now in seconds).
+        const tl = gsap.timeline({
+          scrollTrigger: { trigger: root, start: 'top 75%', once: true },
+        })
+        tl.from(
+          '.chart__grid-line, .chart__axis-label',
+          { opacity: 0, duration: 0.5, stagger: stagger(gridCount), ease: EASE.entrance },
+        )
+        if (paths[0]) {
+          tl.to(paths[0], { strokeDashoffset: 0, duration: 1.6, ease: EASE.entrance }, '-=0.2')
+        }
+        if (paths[1]) {
+          tl.to(paths[1], { strokeDashoffset: 0, duration: 1.2, ease: EASE.entrance }, '-=0.4')
+        }
+        tl.from(
+          '.chart__today-line, .chart__today-dot, .chart__milestone',
+          { opacity: 0, duration: 0.6, stagger: stagger(markCount, 0.06), ease: EASE.entrance },
+          '-=0.6',
+        )
       })
-    }, root)
-
-    return () => ctx.revert()
-  }, [])
+      return () => mm.revert()
+    },
+    { scope: rootRef, dependencies: [] },
+  )
 
   const [todayX, todayY] = scale(2026, 72000)
   const yTicks = [0, 1000, 10000, 100000, 500000, 1000000]

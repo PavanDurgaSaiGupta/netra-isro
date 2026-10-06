@@ -1,8 +1,12 @@
 import * as satellite from 'satellite.js'
 import {
   CELESTRAK_TLE_URL,
+  DEBRIS_GROUP_URLS,
   readCelesTrakCache,
+  readCelesTrakPayloadAnyAge,
+  readEtags,
   writeCelesTrakCache,
+  writeEtag,
   validTLE,
   type CelesTrakResult,
 } from './tleCache.js'
@@ -74,6 +78,19 @@ export function geodeticToVector3(lat: number, lng: number, altKm: number): [num
   return [x, y, z]
 }
 
+// Parsing a TLE is expensive and the whole catalog is re-propagated every 1.5 s tick —
+// parse each element set once and reuse the satrec.
+const satrecCache = new Map<string, ReturnType<typeof satellite.twoline2satrec>>()
+function getSatrec(tle1: string, tle2: string): ReturnType<typeof satellite.twoline2satrec> {
+  const key = `${tle1}|${tle2}`
+  let rec = satrecCache.get(key)
+  if (!rec) {
+    rec = satellite.twoline2satrec(tle1, tle2)
+    satrecCache.set(key, rec)
+  }
+  return rec
+}
+
 // Compute live orbital state via satellite.js SGP4 propagator
 export function computeState(
   base: (typeof SEED_CATALOG)[0],
@@ -82,7 +99,7 @@ export function computeState(
 ): SatelliteItem | null {
   try {
     if (!Number.isFinite(date.getTime())) return null
-    const satrec = satellite.twoline2satrec(base.tle1, base.tle2)
+    const satrec = getSatrec(base.tle1, base.tle2)
     if (satrec.error || !validTLE(base.tle1, base.tle2, base.noradId)) return null
     const pv = satellite.propagate(satrec, date)
     if (!pv || !pv.position || !pv.velocity ||
@@ -141,6 +158,18 @@ function isISROName(name: string): boolean {
   )
 }
 
+function classifyOrbit(meanMotion: number, inclination: number): SeedItem['orbitClass'] {
+  return Math.abs(meanMotion - 1.0027) < 0.05
+    ? inclination < 5
+      ? 'GEO'
+      : 'IGSO'
+    : meanMotion < 6
+      ? 'MEO'
+      : inclination > 96 && inclination < 103
+        ? 'SSO'
+        : 'LEO'
+}
+
 export function parseCelesTrakTLE(text: string): Array<(typeof SEED_CATALOG)[0]> {
   const lines = text.split(/\r?\n/)
   const liveItems: Array<(typeof SEED_CATALOG)[0]> = []
@@ -167,7 +196,7 @@ export function parseCelesTrakTLE(text: string): Array<(typeof SEED_CATALOG)[0]>
         name,
         noradId: norad,
         type: 'payload',
-        orbitClass: Math.abs(meanMotion - 1.0027) < 0.05 ? (inclination < 5 ? 'GEO' : 'IGSO') : meanMotion < 6 ? 'MEO' : inclination > 96 && inclination < 103 ? 'SSO' : 'LEO',
+        orbitClass: classifyOrbit(meanMotion, inclination),
         color: '#00f0ff',
         operator: 'ISRO',
         conjunctionRisk: 'LOW',
@@ -180,18 +209,101 @@ export function parseCelesTrakTLE(text: string): Array<(typeof SEED_CATALOG)[0]>
   return liveItems
 }
 
+// Conditional GP fetch — an If-None-Match hit returns 304 and costs zero payload.
+interface GpFetchResult {
+  status: 200 | 304
+  text: string
+  etag: string | null
+}
+
+async function gpFetch(url: string, etag: string | null): Promise<GpFetchResult | null> {
+  try {
+    const headers: Record<string, string> = etag ? { 'If-None-Match': etag } : {}
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(6000) })
+    if (res.status === 304) return { status: 304, text: '', etag }
+    if (!res.ok) return null
+    return { status: 200, text: await res.text(), etag: res.headers.get('etag') }
+  } catch {
+    return null
+  }
+}
+
+// Debris clouds are fetched live so the catalog carries real, current fragments;
+// the per-cloud cap keeps rendering and the localStorage payload bounded.
+const MAX_PER_CLOUD = 30
+
+function parseDebrisGroup(text: string): SeedItem[] {
+  const lines = text.split(/\r?\n/)
+  const out: SeedItem[] = []
+  for (let i = 0; i < lines.length - 2 && out.length < MAX_PER_CLOUD; i++) {
+    const name = lines[i].trim() || 'ORBITAL DEBRIS'
+    const l1 = lines[i + 1]
+    const l2 = lines[i + 2]
+    if (!l1.startsWith('1 ') || !l2.startsWith('2 ')) continue
+    const norad = Number(l1.slice(2, 7))
+    if (!Number.isInteger(norad)) continue
+    i += 2
+    if (!validTLE(l1, l2, norad)) continue
+    const inclination = Number(l2.slice(8, 16))
+    const meanMotion = Number(l2.slice(52, 63))
+    const launchYear = Number(l1.slice(9, 11))
+    if (!Number.isFinite(inclination) || !Number.isFinite(meanMotion) || meanMotion <= 0) continue
+    out.push({
+      id: `deb-${norad}`,
+      name,
+      noradId: norad,
+      type: 'debris',
+      orbitClass: classifyOrbit(meanMotion, inclination),
+      color: '#ff5a3c',
+      operator: 'ORBITAL DEBRIS',
+      conjunctionRisk: 'MEDIUM',
+      launchYear: launchYear + (launchYear >= 57 ? 1900 : 2000),
+      tle1: l1,
+      tle2: l2,
+    })
+  }
+  return out
+}
+
 export async function fetchLiveCelesTrak(): Promise<CelesTrakResult> {
   const cached = readCelesTrakCache()
   if (cached) return cached
 
+  const etags = readEtags()
+  const anyAge = readCelesTrakPayloadAnyAge()
+
   try {
-    const res = await fetch(CELESTRAK_TLE_URL, { signal: AbortSignal.timeout(3500) })
-    if (res.ok) {
-      const text = await res.text()
-      const liveItems = parseCelesTrakTLE(text)
-      if (liveItems.length >= 5) {
-        const combined = [...liveItems, ...SEED_CATALOG.filter((s) => s.type === 'debris')]
-        writeCelesTrakCache(combined, Date.now())
+    const primary = await gpFetch(CELESTRAK_TLE_URL, etags[CELESTRAK_TLE_URL] ?? null)
+    if (primary?.status === 304 && anyAge) {
+      // Catalog unchanged upstream — keep the payload, refresh its timestamp.
+      writeCelesTrakCache(anyAge.items, Date.now(), etags)
+      return { items: anyAge.items, status: 'CACHE', fetchedAt: Date.now() }
+    }
+
+    const liveItems: SeedItem[] = []
+    if (primary?.status === 200) {
+      liveItems.push(...parseCelesTrakTLE(primary.text))
+      if (primary.etag) writeEtag(CELESTRAK_TLE_URL, primary.etag)
+    }
+
+    const liveDebris: SeedItem[] = []
+    for (const url of DEBRIS_GROUP_URLS) {
+      const r = await gpFetch(url, etags[url] ?? null)
+      if (!r) continue
+      if (r.status === 200) {
+        liveDebris.push(...parseDebrisGroup(r.text))
+        if (r.etag) writeEtag(url, r.etag)
+      } else if (r.status === 304 && anyAge) {
+        liveDebris.push(...anyAge.items.filter((it) => it.type === 'debris' && it.id.startsWith('deb-')))
+      }
+    }
+
+    if (liveItems.length >= 5 || liveDebris.length > 0) {
+      const payloadItems = liveItems.length >= 5 ? liveItems : (anyAge?.items.filter((it) => it.type !== 'debris') ?? [])
+      const seedDebris = liveDebris.length > 0 ? [] : SEED_CATALOG.filter((s) => s.type === 'debris')
+      const combined = [...payloadItems, ...liveDebris, ...seedDebris]
+      if (combined.length >= 5) {
+        writeCelesTrakCache(combined, Date.now(), etags)
         return { items: combined, status: 'ONLINE', fetchedAt: Date.now() }
       }
     }
@@ -199,6 +311,7 @@ export async function fetchLiveCelesTrak(): Promise<CelesTrakResult> {
     console.info('CelesTrak live fetch failed, using verified authentic TLE seed catalog.')
   }
 
+  if (anyAge) return { items: anyAge.items, status: 'CACHE', fetchedAt: anyAge.fetchedAt }
   return { items: SEED_CATALOG, status: 'SEED', fetchedAt: 0 }
 }
 

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { playBlip } from '../utils/audio'
 
 export default function TacticalCursor() {
   const cursorRef = useRef<HTMLDivElement>(null)
@@ -49,7 +48,6 @@ export default function TacticalCursor() {
       if (interactive) {
         if (!isLocked) {
           setIsLocked(true)
-          playBlip(1200, 0.03)
           const text = interactive.getAttribute('aria-label') || interactive.textContent?.trim().slice(0, 18) || 'TARGET'
           setTargetName(text)
         }

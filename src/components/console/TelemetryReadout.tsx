@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { animate } from 'animejs'
 import { useSatellites } from '../../context/SatelliteContext'
-import { playBlip } from '../../utils/audio'
+import OdometerNumber from '../shell/OdometerNumber'
 
 type VelocityUnit = 'KM/S' | 'KM/H' | 'MPH'
 type AltitudeUnit = 'KM' | 'MI' | 'NM'
@@ -23,97 +22,78 @@ export default function TelemetryReadout() {
   const baseInclination = selectedSat ? selectedSat.inclinationDeg : 97.46
   const baseSignal = selectedSat ? -84 : -88
 
-  // Display states
-  const [displayValues, setDisplayValues] = useState({
+  // Live targets handed to the four OdometerNumbers. React state updates land only on
+  // satellite changes and the 2.4s heartbeat — the per-frame roll happens inside
+  // OdometerNumber via ref writes (no setState per frame).
+  const [live, setLive] = useState({
     velocity: baseVelocity,
     altitude: baseAltitude,
     inclination: baseInclination,
     signal: baseSignal,
   })
 
-  // Proxy object for anime.js smooth interpolation
-  const proxyRef = useRef({
-    velocity: baseVelocity,
-    altitude: baseAltitude,
-    inclination: baseInclination,
-    signal: baseSignal,
-  })
-
-  // Smooth animation when selected satellite changes
+  // Latest bases without restarting the jitter interval on every tick
+  const baseRef = useRef({ baseVelocity, baseAltitude, baseInclination, baseSignal })
   useEffect(() => {
-    animate(proxyRef.current, {
+    baseRef.current = { baseVelocity, baseAltitude, baseInclination, baseSignal }
+  })
+
+  // Roll to the selected satellite's bases
+  useEffect(() => {
+    setLive({
       velocity: baseVelocity,
       altitude: baseAltitude,
       inclination: baseInclination,
       signal: baseSignal,
-      duration: 650,
-      ease: 'outQuad',
-      onUpdate: () => {
-        setDisplayValues({
-          velocity: proxyRef.current.velocity,
-          altitude: proxyRef.current.altitude,
-          inclination: proxyRef.current.inclination,
-          signal: proxyRef.current.signal,
-        })
-      },
     })
   }, [baseVelocity, baseAltitude, baseInclination, baseSignal])
 
-  // Realistic micro sensor fluctuation every 2.4 seconds
+  // Realistic micro sensor fluctuation every 2.4 seconds — reads the live bases through a
+  // ref so the interval survives the per-tick dep churn, and hands the jittered targets
+  // to the odometers (inclination is base-stable, as before).
   useEffect(() => {
     const timer = setInterval(() => {
+      const { baseVelocity, baseAltitude, baseSignal } = baseRef.current
       const vDelta = (Math.random() - 0.5) * 0.04
       const aDelta = (Math.random() - 0.5) * 0.8
       const sDelta = Math.round((Math.random() - 0.5) * 3)
 
-      const targetV = Number((baseVelocity + vDelta).toFixed(2))
-      const targetA = Number((baseAltitude + aDelta).toFixed(1))
-      const targetS = Math.round(baseSignal + sDelta)
-
-      animate(proxyRef.current, {
-        velocity: targetV,
-        altitude: targetA,
-        signal: targetS,
-        duration: 900,
-        ease: 'outQuad',
-        onUpdate: () => {
-          setDisplayValues((prev) => ({
-            ...prev,
-            velocity: proxyRef.current.velocity,
-            altitude: proxyRef.current.altitude,
-            signal: proxyRef.current.signal,
-          }))
-        },
-      })
+      setLive((prev) => ({
+        ...prev,
+        velocity: Number((baseVelocity + vDelta).toFixed(2)),
+        altitude: Number((baseAltitude + aDelta).toFixed(1)),
+        signal: Math.round(baseSignal + sDelta),
+      }))
     }, 2400)
 
     return () => clearInterval(timer)
-  }, [baseVelocity, baseAltitude, baseSignal])
+  }, [])
 
-  // Unit conversions
-  const formattedVelocity = () => {
-    if (velUnit === 'KM/H') return (displayValues.velocity * 3600).toFixed(0)
-    if (velUnit === 'MPH') return (displayValues.velocity * 2236.94).toFixed(0)
-    return displayValues.velocity.toFixed(2)
+  // Unit conversions — passed as formatters; OdometerNumber re-maps the SAME live value
+  // instantly when these change (unit toggles don't restart a roll).
+  const fmtVelocity = (n: number) => {
+    if (velUnit === 'KM/H') return (n * 3600).toFixed(0)
+    if (velUnit === 'MPH') return (n * 2236.94).toFixed(0)
+    return n.toFixed(2)
   }
 
-  const formattedAltitude = () => {
-    if (altUnit === 'MI') return (displayValues.altitude * 0.621371).toFixed(1)
-    if (altUnit === 'NM') return (displayValues.altitude * 0.539957).toFixed(1)
-    return displayValues.altitude.toFixed(1)
+  const fmtAltitude = (n: number) => {
+    if (altUnit === 'MI') return (n * 0.621371).toFixed(1)
+    if (altUnit === 'NM') return (n * 0.539957).toFixed(1)
+    return n.toFixed(1)
   }
 
-  const formattedInclination = () => {
-    if (incUnit === 'RAD') return ((displayValues.inclination * Math.PI) / 180).toFixed(3)
-    return displayValues.inclination.toFixed(2)
+  const fmtInclination = (n: number) => {
+    if (incUnit === 'RAD') return ((n * Math.PI) / 180).toFixed(3)
+    return n.toFixed(2)
   }
 
-  const formattedSignal = () => {
+  const fmtSignal = (n: number) => {
     if (sigUnit === 'QUAL') {
-      const q = Math.max(20, Math.min(99, Math.round((displayValues.signal + 120) * 1.8)))
+      const q = Math.max(20, Math.min(99, Math.round((n + 120) * 1.8)))
       return `${q}%`
     }
-    return String(Math.round(displayValues.signal))
+    return String(Math.round(n))
   }
 
   return (
@@ -135,7 +115,6 @@ export default function TelemetryReadout() {
         <div
           className="telemetry-readout__item telemetry-readout__item--clickable"
           onClick={() => {
-            playBlip(1200, 0.02)
             setVelUnit((u) => (u === 'KM/S' ? 'KM/H' : u === 'KM/H' ? 'MPH' : 'KM/S'))
           }}
           title="Click to toggle velocity units (KM/S ↔ KM/H ↔ MPH)"
@@ -144,7 +123,11 @@ export default function TelemetryReadout() {
             ORBITAL VELOCITY <span className="telemetry-readout__toggle-hint">⇄</span>
           </span>
           <div className="telemetry-readout__val-wrap">
-            <span className="telemetry-readout__num">{formattedVelocity()}</span>
+            <OdometerNumber
+              className="telemetry-readout__num"
+              value={live.velocity}
+              format={fmtVelocity}
+            />
             <span className="telemetry-readout__unit">{velUnit}</span>
           </div>
         </div>
@@ -153,7 +136,6 @@ export default function TelemetryReadout() {
         <div
           className="telemetry-readout__item telemetry-readout__item--clickable"
           onClick={() => {
-            playBlip(1200, 0.02)
             setAltUnit((u) => (u === 'KM' ? 'MI' : u === 'MI' ? 'NM' : 'KM'))
           }}
           title="Click to toggle altitude units (KM ↔ MI ↔ NM)"
@@ -162,7 +144,11 @@ export default function TelemetryReadout() {
             ALTITUDE (APOGEE) <span className="telemetry-readout__toggle-hint">⇄</span>
           </span>
           <div className="telemetry-readout__val-wrap">
-            <span className="telemetry-readout__num">{formattedAltitude()}</span>
+            <OdometerNumber
+              className="telemetry-readout__num"
+              value={live.altitude}
+              format={fmtAltitude}
+            />
             <span className="telemetry-readout__unit">{altUnit}</span>
           </div>
         </div>
@@ -171,7 +157,6 @@ export default function TelemetryReadout() {
         <div
           className="telemetry-readout__item telemetry-readout__item--clickable"
           onClick={() => {
-            playBlip(1200, 0.02)
             setIncUnit((u) => (u === 'DEG' ? 'RAD' : 'DEG'))
           }}
           title="Click to toggle angle units (DEG ↔ RAD)"
@@ -180,7 +165,11 @@ export default function TelemetryReadout() {
             INCLINATION <span className="telemetry-readout__toggle-hint">⇄</span>
           </span>
           <div className="telemetry-readout__val-wrap">
-            <span className="telemetry-readout__num">{formattedInclination()}</span>
+            <OdometerNumber
+              className="telemetry-readout__num"
+              value={live.inclination}
+              format={fmtInclination}
+            />
             <span className="telemetry-readout__unit">{incUnit}</span>
           </div>
         </div>
@@ -189,7 +178,6 @@ export default function TelemetryReadout() {
         <div
           className="telemetry-readout__item telemetry-readout__item--clickable"
           onClick={() => {
-            playBlip(1200, 0.02)
             setSigUnit((u) => (u === 'DBM' ? 'QUAL' : 'DBM'))
           }}
           title="Click to toggle signal units (DBM ↔ QUALITY %)"
@@ -198,7 +186,11 @@ export default function TelemetryReadout() {
             SIGNAL STRENGTH <span className="telemetry-readout__toggle-hint">⇄</span>
           </span>
           <div className="telemetry-readout__val-wrap">
-            <span className="telemetry-readout__num">{formattedSignal()}</span>
+            <OdometerNumber
+              className="telemetry-readout__num"
+              value={live.signal}
+              format={fmtSignal}
+            />
             <span className="telemetry-readout__unit">{sigUnit}</span>
           </div>
         </div>

@@ -1,9 +1,33 @@
+import { useRef } from 'react'
 import ProgramSection from '../components/ProgramSection'
 import Footer from '../components/Footer'
 import { Link } from 'react-router-dom'
-import { playLockSound } from '../utils/audio'
+import { DUR, EASE, gsap, prefersReducedMotion, stagger, useGSAP } from '../lib/motion'
 
 export default function AboutView() {
+  const timelineRef = useRef<HTMLDivElement>(null)
+
+  // Contract §4: timeline items reveal on scroll via the shared stagger helper
+  // (60ms steps, inside the 500ms budget). Copy is untouched.
+  useGSAP(
+    () => {
+      if (prefersReducedMotion()) return
+      const root = timelineRef.current
+      if (!root) return
+      const items = root.querySelectorAll<HTMLElement>('.about-timeline__item')
+      if (!items.length) return
+      gsap.from(items, {
+        opacity: 0,
+        y: 28,
+        duration: DUR.BASE,
+        ease: EASE.ENTRANCE,
+        stagger: stagger(items.length),
+        scrollTrigger: { trigger: root, start: 'top 78%', once: true },
+      })
+    },
+    { scope: timelineRef },
+  )
+
   return (
     <div className="about-view">
       <div className="about-view__inner">
@@ -20,7 +44,6 @@ export default function AboutView() {
             <Link
               to="/tracking"
               className="btn-primary"
-              onClick={() => playLockSound()}
             >
               LAUNCH LIVE 3D TRACKING COCKPIT ↗
             </Link>
@@ -73,7 +96,7 @@ export default function AboutView() {
             </div>
           </div>
 
-          <div className="about-timeline">
+          <div className="about-timeline" ref={timelineRef}>
             <div className="about-timeline__item">
               <div className="about-timeline__year hud-text">DECEMBER 2020</div>
               <div className="about-timeline__body">

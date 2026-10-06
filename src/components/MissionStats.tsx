@@ -1,46 +1,48 @@
-import { useEffect, useRef } from 'react'
-import gsap from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
-
-gsap.registerPlugin(ScrollTrigger)
+import { useRef, useState } from 'react'
+import OdometerNumber from './shell/OdometerNumber'
+import { DUR, EASE, gsap, prefersReducedMotion, stagger, useGSAP } from '../lib/motion'
 
 const PROGRAMS = [
-  { pct: 96, name: 'NETRA — Debris Tracking', desc: 'Collision warnings issued to Indian fleet operators within hours of a conjunction alert.' },
-  { pct: 88, name: 'PSLV / GSLV — Launch Vehicles', desc: 'Post-launch disposal burns and passivation on every mission since 2019.' },
-  { pct: 74, name: 'Chandrayaan — Lunar Missions', desc: 'End-of-life lunar orbit disposal for long-lived orbiter hardware.' },
-  { pct: 65, name: 'Aditya-L1 — Solar Observation', desc: 'Halo-orbit station-keeping planned around the debris environment at L1.' },
-  { pct: 100, name: 'Gaganyaan — Human Spaceflight', desc: 'Every crewed window screened against the live debris catalogue.' },
+  { pct: 96, name: 'NETRA - Debris Tracking', desc: 'Collision warnings issued to Indian fleet operators within hours of a conjunction alert.' },
+  { pct: 88, name: 'PSLV / GSLV - Launch Vehicles', desc: 'Post-launch disposal burns and passivation on every mission since 2019.' },
+  { pct: 74, name: 'Chandrayaan - Lunar Missions', desc: 'End-of-life lunar orbit disposal for long-lived orbiter hardware.' },
+  { pct: 65, name: 'Aditya-L1 - Solar Observation', desc: 'Halo-orbit station-keeping planned around the debris environment at L1.' },
+  { pct: 100, name: 'Gaganyaan - Human Spaceflight', desc: 'Every crewed window screened against the live debris catalogue.' },
 ]
 
 export default function MissionStats() {
   const rootRef = useRef<HTMLElement>(null)
+  // Flips once when the section enters the viewport; OdometerNumber then rolls
+  // each numeral from 0 to its target. One setState on enter, never per-frame.
+  const [live, setLive] = useState(false)
 
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      document.querySelectorAll<HTMLElement>('.stat-row').forEach((row, i) => {
-        const numEl = row.querySelector<HTMLElement>('.stat-row__num')!
-        const target = Number(numEl.dataset.target)
-        const counter = { v: 0 }
-
-        gsap.from(row, {
-          opacity: 0,
-          y: 32,
-          duration: 0.9,
-          ease: 'power3.out',
-          delay: i * 0.08,
-          scrollTrigger: { trigger: row, start: 'top 85%' },
-        })
-        gsap.to(counter, {
-          v: target,
-          duration: 1.4,
-          ease: 'power4.out',
-          scrollTrigger: { trigger: row, start: 'top 85%' },
-          onUpdate: () => (numEl.textContent = String(Math.round(counter.v))),
-        })
+  // Queries are scoped to rootRef (no document.querySelectorAll leakage).
+  useGSAP(
+    () => {
+      const root = rootRef.current
+      if (!root) return
+      if (prefersReducedMotion()) {
+        setLive(true)
+        return
+      }
+      const rows = root.querySelectorAll<HTMLElement>('.stat-row')
+      if (!rows.length) return
+      gsap.from(rows, {
+        opacity: 0,
+        y: 32,
+        duration: DUR.BASE,
+        ease: EASE.ENTRANCE,
+        stagger: stagger(rows.length),
+        scrollTrigger: {
+          trigger: root,
+          start: 'top 82%',
+          once: true,
+          onEnter: () => setLive(true),
+        },
       })
-    }, rootRef)
-    return () => ctx.revert()
-  }, [])
+    },
+    { scope: rootRef },
+  )
 
   return (
     <section className="stats section-pad" ref={rootRef}>
@@ -50,9 +52,7 @@ export default function MissionStats() {
       {PROGRAMS.map((p) => (
         <article className="stat-row" key={p.name}>
           <div className="stat-row__pct">
-            <span className="stat-row__num" data-target={p.pct}>
-              0
-            </span>
+            <OdometerNumber value={live ? p.pct : 0} className="stat-row__num" />
             <small>%</small>
           </div>
           <div className="stat-row__name">

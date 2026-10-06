@@ -1,5 +1,4 @@
 import { NavLink } from 'react-router-dom'
-import { playBlip } from '../../utils/audio'
 
 interface MobileNavItem {
   to: string
@@ -72,7 +71,6 @@ export default function MobileBottomNav() {
             className={({ isActive }) =>
               `mobile-bottom-nav__item ${isActive ? 'mobile-bottom-nav__item--active' : ''}`
             }
-            onClick={() => playBlip(1200, 0.02)}
           >
             <span className="mobile-bottom-nav__icon">{item.icon}</span>
             <span className="mobile-bottom-nav__label hud-text">{item.label}</span>

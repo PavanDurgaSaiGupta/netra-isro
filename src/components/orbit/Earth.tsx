@@ -62,6 +62,10 @@ export function Earth({ stage }: { stage: number }) {
     [],
   )
 
+  // R3F does not auto-dispose materials passed as props (material={atmosMat}) —
+  // release the shader program + uniforms when the scene unmounts.
+  useEffect(() => () => atmosMat.dispose(), [atmosMat])
+
   return (
     <group>
       <mesh receiveShadow>

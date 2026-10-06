@@ -4,6 +4,10 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { geodeticToVector3 } from '../../services/satelliteData'
 
+// Scratch vectors — reused across every frame, never allocated inside useFrame
+const _normal = new THREE.Vector3()
+const _camToStation = new THREE.Vector3()
+
 export default function GroundStationBeam() {
   const pos = useMemo(() => geodeticToVector3(12.9716, 77.5946, 0), [])
   const labelRef = useRef<HTMLDivElement>(null)
@@ -11,16 +15,15 @@ export default function GroundStationBeam() {
 
   useFrame(({ camera }) => {
     if (!labelRef.current) return
-    const camPos = camera.position
-    const normal = stationWorldPos.clone().normalize()
-    const camToStation = stationWorldPos.clone().sub(camPos).normalize()
-    const isFacingCamera = normal.dot(camToStation) < 0
+    _normal.copy(stationWorldPos).normalize()
+    _camToStation.copy(stationWorldPos).sub(camera.position)
+    const dist = _camToStation.length()
+    const isFacingCamera = _normal.dot(_camToStation) < 0
     if (!isFacingCamera) {
       labelRef.current.style.display = 'none'
       return
     }
     labelRef.current.style.display = 'inline-flex'
-    const dist = camera.position.distanceTo(stationWorldPos)
     const scale = THREE.MathUtils.clamp(1.05 - (dist / 16) * 0.35, 0.68, 1.05)
     labelRef.current.style.transform = `translate(-50%, -150%) scale(${scale})`
   })

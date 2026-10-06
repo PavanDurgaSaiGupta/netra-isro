@@ -1,84 +1,52 @@
-import { useEffect } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
-import { playBlip } from '../../utils/audio'
+import { useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 
-interface NavItem {
+/**
+ * Radar-first navigation — the sidebar as a live polar instrument.
+ *
+ - `.radar-nav__scope` holds an SVG graticule (range rings + crosshairs), a rotating
+   conic sweep (4s linear infinite, CSS) and the six routes plotted as contacts.
+ - Each contact carries `--sweep-delay` (= angle / 360 × 4s) so its CSS pulse fires
+   exactly when the sweep crosses it. The sweep must start pointing north and rotate
+   clockwise for that sync to hold.
+ - Hover/focus on a contact or its label = acquiring (artifact ring + bright label,
+   `--ease-capture` in CSS). The active route stays locked.
+ - Interactive elements are the labels; contacts are aria-hidden visuals that remain
+   clickable for pointer users.
+ */
+
+interface NavContact {
   to: string
   label: string
   subtitle: string
-  icon: React.ReactNode
+  /** Polar placement on the scope: degrees clockwise from north, radius 0..1. */
+  angle: number
+  radius: number
 }
 
-const NAV_ITEMS: NavItem[] = [
-  {
-    to: '/overview',
-    label: 'OVERVIEW',
-    subtitle: 'MISSION BRIEFING',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-      </svg>
-    ),
-  },
-  {
-    to: '/tracking',
-    label: '3D COCKPIT',
-    subtitle: 'LIVE SURVEILLANCE',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-      </svg>
-    ),
-  },
-  {
-    to: '/catalog',
-    label: 'SATELLITE CATALOG',
-    subtitle: 'EPHEMERIS FLEET TABLE',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <path d="M3 9h18M3 15h18M9 3v18" />
-      </svg>
-    ),
-  },
-  {
-    to: '/debris',
-    label: 'DEBRIS ANALYTICS',
-    subtitle: 'CONJUNCTION & KESSLER',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <line x1="18" y1="20" x2="18" y2="10" />
-        <line x1="12" y1="20" x2="12" y2="4" />
-        <line x1="6" y1="20" x2="6" y2="14" />
-      </svg>
-    ),
-  },
-  {
-    to: '/alerts',
-    label: 'ALERTS & LOGS',
-    subtitle: 'DSSAM EVENT STREAM',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-      </svg>
-    ),
-  },
-  {
-    to: '/about',
-    label: 'ABOUT NETRA',
-    subtitle: 'ISRO DSSAM MANDATE',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="16" x2="12" y2="12" />
-        <line x1="12" y1="8" x2="12.01" y2="8" />
-      </svg>
-    ),
-  },
+const NAV_CONTACTS: NavContact[] = [
+  { to: '/overview', label: 'OVERVIEW', subtitle: 'MISSION BRIEFING', angle: 0, radius: 0.88 },
+  { to: '/tracking', label: '3D COCKPIT', subtitle: 'LIVE SURVEILLANCE', angle: 56, radius: 0.52 },
+  { to: '/catalog', label: 'CATALOG', subtitle: 'EPHEMERIS FLEET TABLE', angle: 124, radius: 0.8 },
+  { to: '/debris', label: 'DEBRIS', subtitle: 'CONJUNCTION & KESSLER', angle: 188, radius: 0.93 },
+  { to: '/alerts', label: 'ALERTS', subtitle: 'DSSAM EVENT STREAM', angle: 246, radius: 0.6 },
+  { to: '/about', label: 'ABOUT', subtitle: 'ISRO DSSAM MANDATE', angle: 304, radius: 0.78 },
 ]
+
+const SWEEP_PERIOD_S = 4
+
+function contactPosition(contact: NavContact): { left: string; top: string } {
+  const rad = (contact.angle * Math.PI) / 180
+  const x = 50 + Math.sin(rad) * contact.radius * 50
+  const y = 50 - Math.cos(rad) * contact.radius * 50
+  return { left: `${x.toFixed(2)}%`, top: `${y.toFixed(2)}%` }
+}
+
+/** Delay that syncs a contact's CSS pulse to the moment the sweep crosses its angle. */
+function sweepDelay(angle: number): string {
+  return `${((angle / 360) * SWEEP_PERIOD_S).toFixed(2)}s`
+}
 
 interface SidebarProps {
   mobileOpen?: boolean
@@ -87,7 +55,9 @@ interface SidebarProps {
 
 export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const location = useLocation()
+  const navigate = useNavigate()
   const isCockpit = location.pathname === '/tracking'
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null)
 
   // Close mobile sidebar on Escape key
   useEffect(() => {
@@ -101,96 +71,100 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   }, [mobileOpen, onCloseMobile])
 
   const handleLinkClick = () => {
-    playBlip(1200, 0.02)
     onCloseMobile?.()
+  }
+
+  const handleContactClick = (to: string) => {
+    onCloseMobile?.()
+    navigate(to)
   }
 
   return (
     <>
-      {/* Mobile Backdrop Overlay */}
+      {/* Mobile backdrop overlay */}
       {mobileOpen && (
-        <div
-          className="app-sidebar__backdrop"
-          onClick={onCloseMobile}
-          aria-hidden="true"
-        />
+        <div className="radar-nav__backdrop" onClick={onCloseMobile} aria-hidden="true" />
       )}
 
       <aside
-        className={`app-sidebar ${isCockpit ? 'app-sidebar--compact' : ''} ${
-          mobileOpen ? 'app-sidebar--mobile-open' : ''
+        className={`radar-nav ${isCockpit ? 'radar-nav--compact' : ''} ${
+          mobileOpen ? 'radar-nav--mobile-open' : ''
         }`}
         aria-label="Main Application Navigation"
       >
-        {/* Brand Header */}
-        <div className="app-sidebar__brand">
-          <div className="app-sidebar__brand-row">
-            <div className="app-sidebar__logo">
-              <span className="app-sidebar__diamond">◆</span>
-              <div className="app-sidebar__brand-text">
-                <div className="app-sidebar__title">NETRA / नेत्रा</div>
-                <div className="app-sidebar__subtitle hud-text">ISRO DSSAM OPERATIONS</div>
-              </div>
-            </div>
+        {/* Mobile close button */}
+        <button
+          type="button"
+          className="radar-nav__close"
+          onClick={onCloseMobile}
+          aria-label="Close navigation menu"
+        >
+          ✕
+        </button>
 
-            {/* Mobile Close Button */}
-            <button
-              type="button"
-              className="app-sidebar__mobile-close-btn"
-              onClick={onCloseMobile}
-              aria-label="Close navigation menu"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div className="app-sidebar__badge hud-text">
-            <span className="app-sidebar__status-dot" />
-            <span className="app-sidebar__badge-label">DSSAM LIVE</span>
-          </div>
+        {/* Polar scope */}
+        <div className="radar-nav__scope" aria-hidden="true">
+          <svg viewBox="0 0 220 220" focusable="false">
+            <circle className="radar-nav__ring" cx="110" cy="110" r="36" />
+            <circle className="radar-nav__ring" cx="110" cy="110" r="72" />
+            <circle className="radar-nav__ring" cx="110" cy="110" r="104" />
+            <circle className="radar-nav__ring radar-nav__ring--outer" cx="110" cy="110" r="109" />
+            <line className="radar-nav__crosshair" x1="110" y1="6" x2="110" y2="214" />
+            <line className="radar-nav__crosshair" x1="6" y1="110" x2="214" y2="110" />
+          </svg>
+          <div className="radar-nav__sweep" />
+          {NAV_CONTACTS.map((contact, i) => {
+            const locked = location.pathname === contact.to
+            const acquiring = hoverIndex === i
+            return (
+              <span
+                key={contact.to}
+                className={`radar-nav__contact ${locked ? 'radar-nav__contact--locked' : ''} ${
+                  acquiring ? 'radar-nav__contact--acquiring' : ''
+                }`}
+                style={
+                  {
+                    ...contactPosition(contact),
+                    '--sweep-delay': sweepDelay(contact.angle),
+                  } as CSSProperties
+                }
+                onMouseEnter={() => setHoverIndex(i)}
+                onMouseLeave={() => setHoverIndex(null)}
+                onClick={() => handleContactClick(contact.to)}
+              />
+            )
+          })}
         </div>
 
-        {/* Nav Menu */}
-        <nav className="app-sidebar__nav">
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                `app-sidebar__link ${isActive ? 'app-sidebar__link--active' : ''}`
-              }
-              onClick={handleLinkClick}
-              title={`${item.label} — ${item.subtitle}`}
-            >
-              <span className="app-sidebar__icon">{item.icon}</span>
-              <div className="app-sidebar__text">
-                <span className="app-sidebar__label">{item.label}</span>
-                <span className="app-sidebar__sublabel hud-text">{item.subtitle}</span>
-              </div>
-            </NavLink>
+        {/* Vertical mono labels — the interactive navigation */}
+        <ul className="radar-nav__labels">
+          {NAV_CONTACTS.map((contact, i) => (
+            <li key={contact.to}>
+              <NavLink
+                to={contact.to}
+                className={({ isActive }) =>
+                  `radar-nav__label hud-text${isActive ? ' radar-nav__label--locked' : ''}${
+                    hoverIndex === i ? ' radar-nav__label--acquiring' : ''
+                  }`
+                }
+                aria-label={`${contact.label} - ${contact.subtitle}`}
+                onMouseEnter={() => setHoverIndex(i)}
+                onMouseLeave={() => setHoverIndex(null)}
+                onFocus={() => setHoverIndex(i)}
+                onBlur={() => setHoverIndex(null)}
+                onClick={handleLinkClick}
+              >
+                {contact.label}
+              </NavLink>
+            </li>
           ))}
-        </nav>
+        </ul>
 
-        {/* Sensor Ground Station Footer */}
-        <div className="app-sidebar__footer">
-          <div className="app-sidebar__station-card">
-            <div className="app-sidebar__station-head hud-text">
-              <span>GROUND SENSOR</span>
-              <span style={{ color: 'var(--status-active)' }}>CONNECTED</span>
-            </div>
-            <div className="app-sidebar__station-name">ISTRAC BENGALURU</div>
-            <div className="app-sidebar__station-coords hud-text">12.9716° N • 77.5946° E</div>
-            <div className="app-sidebar__station-stat">
-              <span className="hud-text hud__faint">ACTIVE HORIZON CONE</span>
-              <span className="hud-text" style={{ color: 'var(--accent-cyan)' }}>3,200 KM</span>
-            </div>
-          </div>
-
-          <div className="app-sidebar__meta hud-text hud__dim">
-            <span>NETRA MISSION CONSOLE v2.6</span>
-            <span>BHARAT ORBITAL SAFETY</span>
-          </div>
-        </div>
+        {/* Version / org id */}
+        <footer className="radar-nav__meta hud-text hud__dim">
+          <span>NETRA CONSOLE v2.6</span>
+          <span>ISRO / ISTRAC</span>
+        </footer>
       </aside>
     </>
   )

@@ -1,8 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import gsap from 'gsap'
+import { gsap } from '../../lib/motion'
 import type { SatelliteItem } from '../../services/satelliteData'
+
+// Scratch vector — the follow loop runs every frame; never allocate inside useFrame
+const _livePos = new THREE.Vector3()
+
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 export default function CameraController({
   controlsRef,
@@ -22,6 +28,15 @@ export default function CameraController({
   const lastRecenterRef = useRef(0)
   const lastResetRef = useRef(0)
   const activeTweenRef = useRef<gsap.core.Tween | null>(null)
+
+  // Kill any in-flight camera tween when the scene unmounts
+  useEffect(
+    () => () => {
+      activeTweenRef.current?.kill()
+      activeTweenRef.current = null
+    },
+    [],
+  )
 
   useEffect(() => {
     const ctrl = controlsRef.current
@@ -77,7 +92,7 @@ export default function CameraController({
       tx: targetPos.x,
       ty: targetPos.y,
       tz: targetPos.z,
-      duration: 1.2,
+      duration: prefersReducedMotion() ? 0 : 1.2,
       ease: 'power3.inOut',
       onUpdate: () => {
         camera.position.set(animProxy.cx, animProxy.cy, animProxy.cz)
@@ -119,7 +134,7 @@ export default function CameraController({
       tx: targetPos.x,
       ty: targetPos.y,
       tz: targetPos.z,
-      duration: 1.2,
+      duration: prefersReducedMotion() ? 0 : 1.2,
       ease: 'power3.inOut',
       onUpdate: () => {
         camera.position.set(animProxy.cx, animProxy.cy, animProxy.cz)
@@ -134,8 +149,8 @@ export default function CameraController({
 
   useFrame(() => {
     if (isFollowingRef.current && selectedSat && controlsRef.current && !isUserDraggingRef.current && !activeTweenRef.current) {
-      const livePos = new THREE.Vector3(...selectedSat.pos3D)
-      controlsRef.current.target.lerp(livePos, 0.08)
+      _livePos.set(...selectedSat.pos3D)
+      controlsRef.current.target.lerp(_livePos, 0.08)
       controlsRef.current.update()
     }
   })

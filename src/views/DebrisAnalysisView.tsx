@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import DebrisGrowthChart from '../components/DebrisGrowthChart'
 import MissionStats from '../components/MissionStats'
-import { playBlip, playLockSound } from '../utils/audio'
+import { DUR, EASE, gsap, prefersReducedMotion, stagger, useGSAP } from '../lib/motion'
 
 interface ConjunctionPair {
   id: string
@@ -101,9 +101,30 @@ const CONJUNCTION_SCREENING_DATA: ConjunctionPair[] = [
 export default function DebrisAnalysisView() {
   const [selectedPair, setSelectedPair] = useState<ConjunctionPair | null>(CONJUNCTION_SCREENING_DATA[1])
   const [copiedNotification, setCopiedNotification] = useState(false)
+  const screeningRef = useRef<HTMLElement>(null)
+
+  // Contract §4: conjunction rows stagger in on scroll (ScrollTrigger).
+  // Six rows at a 300ms total spread stays inside the 500ms stagger budget.
+  useGSAP(
+    () => {
+      if (prefersReducedMotion()) return
+      const root = screeningRef.current
+      if (!root) return
+      const rows = root.querySelectorAll<HTMLElement>('.catalog-table tbody tr')
+      if (!rows.length) return
+      gsap.from(rows, {
+        opacity: 0,
+        y: 18,
+        duration: DUR.BASE,
+        ease: EASE.ENTRANCE,
+        stagger: stagger(rows.length),
+        scrollTrigger: { trigger: root, start: 'top 82%', once: true },
+      })
+    },
+    { scope: screeningRef },
+  )
 
   const handleExport = () => {
-    playLockSound()
     const csv =
       'PRIMARY_ASSET,NORAD_ID,CHASER_OBJECT,CHASER_NORAD,MISS_KM,COLLISION_PROBABILITY,TCA_UTC,STATUS\n' +
       CONJUNCTION_SCREENING_DATA.map(
@@ -175,7 +196,7 @@ export default function DebrisAnalysisView() {
       </div>
 
       {/* Real-time Conjunction Screening Table (Government Level) */}
-      <section className="debris-screening-section">
+      <section className="debris-screening-section" ref={screeningRef}>
         <div className="debris-screening-section__head">
           <div>
             <span className="hud-text kicker">REAL-TIME SGP4 HIGH-RISK CONJUNCTIONS</span>
@@ -201,7 +222,7 @@ export default function DebrisAnalysisView() {
 
         <div className="debris-table-wrap">
           <table className="catalog-table" aria-label="Active close-approach screening matrix for next 48 hours">
-            <caption className="sr-only">Conjunction screening matrix — next 48 hours, sorted by miss distance and collision probability</caption>
+            <caption className="sr-only">Conjunction screening matrix - next 48 hours, sorted by miss distance and collision probability</caption>
             <thead>
               <tr className="hud-text">
                 <th>STATUS</th>
@@ -221,9 +242,17 @@ export default function DebrisAnalysisView() {
                   <tr
                     key={conj.id}
                     className={`catalog-table__row ${isSelected ? 'catalog-table__row--selected' : ''}`}
+                    tabIndex={0}
+                    aria-selected={isSelected}
+                    aria-label={`${conj.primaryAsset} versus ${conj.chaserObject}, miss distance ${conj.missDistanceKm.toFixed(2)} kilometers, ${conj.status}`}
                     onClick={() => {
-                      playBlip(1100, 0.02)
                       setSelectedPair(conj)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setSelectedPair(conj)
+                      }
                     }}
                     style={{ cursor: 'pointer' }}
                   >
@@ -284,7 +313,6 @@ export default function DebrisAnalysisView() {
                         className="catalog-table__inspect-btn u-link hud-text"
                         onClick={(e) => {
                           e.stopPropagation()
-                          playLockSound()
                           setSelectedPair(conj)
                         }}
                       >
@@ -311,8 +339,8 @@ export default function DebrisAnalysisView() {
               <div>
                 <span className="hud__faint">COLLISION THRESHOLD:</span>{' '}
                 {selectedPair.missDistanceKm < 1.0
-                  ? 'CRITICAL (< 1.0 KM) — AUTOMATED AVOIDANCE BURN TRIGGERED'
-                  : 'MONITORED — SGP4 RE-PROPAGATION SCHEDULED EVERY 60 MIN'}
+                  ? 'CRITICAL (< 1.0 KM) - AUTOMATED AVOIDANCE BURN TRIGGERED'
+                  : 'MONITORED - SGP4 RE-PROPAGATION SCHEDULED EVERY 60 MIN'}
               </div>
               <div>
                 <span className="hud__faint">PRIMARY SENSOR:</span> ISTRAC BENGALURU X-BAND RADAR &amp; MOUNT ABU OPTICAL
@@ -363,7 +391,7 @@ export default function DebrisAnalysisView() {
             <div className="debris-protocol-step hud-text">STAGE 03 // TCA -24H</div>
             <h3 className="debris-protocol-title">Directorate CAM Authorization</h3>
             <p className="debris-protocol-desc">
-              If collision probability $P_c &gt; 1 \times 10^{-4}$ or miss distance &lt; 1.0 km, the Mission Director authorizes orbital shift. Delta-V maneuver vector is computed.
+              If collision probability Pc &gt; 1×10⁻⁴ or miss distance &lt; 1.0 km, the Mission Director authorizes orbital shift. Delta-V maneuver vector is computed.
             </p>
           </div>
 

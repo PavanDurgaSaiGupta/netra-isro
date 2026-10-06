@@ -5,7 +5,8 @@ import SystemStatusPanel from '../components/console/SystemStatusPanel'
 import TelemetryReadout from '../components/console/TelemetryReadout'
 import SatelliteDetailDrawer from '../components/console/SatelliteDetailDrawer'
 import OverheadRadar from '../components/OverheadRadar'
-import { playBlip, playLockSound } from '../utils/audio'
+import TimeControls from '../components/console/TimeControls'
+import LiveDateline from '../components/console/LiveDateline'
 import type { SatelliteItem } from '../services/satelliteData'
 
 const REGIMES = ['ALL', 'ISRO', 'DEBRIS', 'LEO', 'GEO'] as const
@@ -43,7 +44,6 @@ export default function LiveTrackingView() {
 
   // Handle clicking or pressing Enter on a search result
   const handleSelectSatellite = (sat: SatelliteItem) => {
-    playLockSound()
     setSelectedSat(sat)
     if (isMobile) {
       setMobilePanel('none')
@@ -75,12 +75,14 @@ export default function LiveTrackingView() {
   }
 
   const toggleMobilePanel = (panel: MobilePanel) => {
-    playBlip(1100, 0.02)
     setMobilePanel((curr) => (curr === panel ? 'none' : panel))
   }
 
   return (
     <div className="tracking-view">
+      {/* This view owns the page h1 (moved out of TopBar per contract §4) */}
+      <h1 className="sr-only">Live Orbital Tracking</h1>
+
       {/* 3D Orbit Scene fills the entire background workspace with Centered Earth */}
       <div className="tracking-view__scene-container">
         <OrbitScene />
@@ -258,9 +260,10 @@ export default function LiveTrackingView() {
           {REGIMES.map((regime) => (
             <button
               key={regime}
+              type="button"
               className={`tracking-view__pill ${filterRegime === regime ? 'tracking-view__pill--active' : ''}`}
+              aria-pressed={filterRegime === regime}
               onClick={() => {
-                playBlip(1100, 0.02)
                 setFilterRegime(regime)
               }}
             >
@@ -347,15 +350,28 @@ export default function LiveTrackingView() {
         <OverheadRadar
           satellites={satellites}
           onSelectSat={(sat) => {
-            playLockSound()
             setSelectedSat(sat)
             if (isMobile) setMobilePanel('none')
           }}
         />
       </div>
 
-      {/* Floating Center-Bottom Tactical Quick-Action Pill */}
-      <div className="tracking-view__center-bottom-pill hud-text">
+      {/* Mission dateline (item 8) — full-width timeline along the bottom edge */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 60,
+          pointerEvents: 'auto',
+        }}
+      >
+        <LiveDateline />
+      </div>
+
+      {/* Floating Center-Bottom Tactical Quick-Action Pill (raised above the dateline) */}
+      <div className="tracking-view__center-bottom-pill hud-text" style={{ bottom: 52 }}>
         {selectedSat ? (
           <div className="tracking-view__target-info">
             <span className="tracking-view__target-dot" style={{ background: selectedSat.color }} />
@@ -364,7 +380,6 @@ export default function LiveTrackingView() {
             <button
               className="tracking-view__reset-btn"
               onClick={() => {
-                playBlip(800, 0.02)
                 triggerResetView()
               }}
               title="Release camera lock and re-center the Earth"
@@ -376,7 +391,6 @@ export default function LiveTrackingView() {
           <button
             className="tracking-view__recenter-earth-btn"
             onClick={() => {
-              playBlip(950, 0.02)
               triggerResetView()
             }}
             title="Recenter camera on Earth globe"
@@ -384,6 +398,21 @@ export default function LiveTrackingView() {
             ⊙ CENTER EARTH VIEW
           </button>
         )}
+      </div>
+
+      {/* Mission-time cockpit HUD (item 7) — docked just above the action pill */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 92,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 70,
+          pointerEvents: 'auto',
+          maxWidth: 'min(94vw, 680px)',
+        }}
+      >
+        <TimeControls />
       </div>
 
       {/* Slide-in Detailed Telemetry Drawer */}

@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { useGSAP } from '@gsap/react'
+import { prefersReducedMotion } from '../lib/motion'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -18,14 +20,25 @@ const NAV = [
 export default function ProgramSection() {
   const rootRef = useRef<HTMLElement>(null)
 
-  useEffect(() => {
-    const root = rootRef.current
-    if (!root) return
+  useGSAP(
+    () => {
+      const root = rootRef.current
+      if (!root) return
 
-    const ctx = gsap.context(() => {
+      const wash = root.querySelector<HTMLElement>('.program__wash')
+      const content = root.querySelector<HTMLElement>('.program__content')
+      if (!wash || !content) return
+
+      if (prefersReducedMotion()) {
+        // Static composition: the scrub's end state (orange flooded, copy flipped dark).
+        gsap.set(wash, { '--wedge': '0%' })
+        gsap.set(content, { color: '#05070A' })
+        return
+      }
+
       // Diagonal orange wash widens with scroll (slight lag reads more cinematic than 1:1)
       gsap.fromTo(
-        '.program__wash',
+        wash,
         { '--wedge': '100%' },
         {
           '--wedge': '0%',
@@ -40,26 +53,22 @@ export default function ProgramSection() {
       )
 
       // Text flips dark as the orange floods in
-      const content = root.querySelector<HTMLElement>('.program__content')
-      if (content) {
-        gsap.fromTo(
-          content,
-          { color: '#f3f4f1' },
-          {
-            color: '#05070A',
-            scrollTrigger: {
-              trigger: root,
-              start: 'top 55%',
-              end: 'center 40%',
-              scrub: 0.6,
-            },
+      gsap.fromTo(
+        content,
+        { color: '#f3f4f1' },
+        {
+          color: '#05070A',
+          scrollTrigger: {
+            trigger: root,
+            start: 'top 55%',
+            end: 'center 40%',
+            scrub: 0.6,
           },
-        )
-      }
-    }, root)
-
-    return () => ctx.revert()
-  }, [])
+        },
+      )
+    },
+    { scope: rootRef },
+  )
 
   return (
     <section className="program" id="program" ref={rootRef}>
@@ -76,8 +85,8 @@ export default function ProgramSection() {
           <p className="program__lead">
             India's approach to orbital stewardship pairs indigenous tracking radar and optical
             facilities under NETRA with aggressive debris-mitigation rules for every new launch.
-            From passivation of spent stages to de-orbiting within 25 years — and far sooner for
-            missions launched after 2025 — the goal is a sustainable orbital environment for the
+            From passivation of spent stages to de-orbiting within 25 years (and far sooner for
+            missions launched after 2025), the goal is a sustainable orbital environment for the
             next century of spaceflight.
           </p>
         </div>
