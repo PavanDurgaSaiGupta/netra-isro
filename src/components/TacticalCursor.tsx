@@ -2,21 +2,20 @@ import { useEffect, useRef, useState } from 'react'
 
 export default function TacticalCursor() {
   const cursorRef = useRef<HTMLDivElement>(null)
-  const [coords, setCoords] = useState({ x: 0, y: 0 })
-  const [isLocked, setIsLocked] = useState(false)
-  const [targetName, setTargetName] = useState<string | null>(null)
-  const [visible, setVisible] = useState(false)
-  const [isTouchDevice, setIsTouchDevice] = useState(false)
+  const coordsRef = useRef<HTMLSpanElement>(null)
+  const lockBadgeRef = useRef<HTMLSpanElement>(null)
+  const [isTouchDevice] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      (window.matchMedia('(pointer: coarse), (hover: none)').matches || 'ontouchstart' in window),
+  )
 
   useEffect(() => {
-    // Detect touch / coarse pointer devices
-    const isTouch = window.matchMedia('(pointer: coarse), (hover: none)').matches || 'ontouchstart' in window
-    if (isTouch) {
-      setIsTouchDevice(true)
-      return
-    }
+    if (isTouchDevice) return
 
     const cursor = cursorRef.current
+    const coordsEl = coordsRef.current
+    const lockEl = lockBadgeRef.current
     if (!cursor) return
 
     let mouseX = window.innerWidth / 2
@@ -24,50 +23,71 @@ export default function TacticalCursor() {
     let curX = mouseX
     let curY = mouseY
     let rafId: number
+    let isVisible = false
+    let isLocked = false
 
     const handleMouseMove = (e: MouseEvent) => {
       mouseX = e.clientX
       mouseY = e.clientY
-      if (!visible) setVisible(true)
 
-      // Virtual Azimuth/Elevation computation from screen position
-      const az = Math.round(((e.clientX / window.innerWidth) * 360) % 360)
-      const el = Math.round(90 - (e.clientY / window.innerHeight) * 90)
-      setCoords({ x: az, y: el })
+      if (!isVisible) {
+        isVisible = true
+        cursor.classList.add('tactical-cursor--visible')
+      }
+
+      // Update virtual azimuth/elevation directly in DOM (zero React re-renders)
+      if (coordsEl) {
+        const az = Math.round(((e.clientX / window.innerWidth) * 360) % 360)
+        const el = Math.round(90 - (e.clientY / window.innerHeight) * 90)
+        coordsEl.textContent = `AZ:${String(az).padStart(3, '0')}° EL:${String(el).padStart(2, '0')}°`
+      }
 
       const target = e.target as HTMLElement | null
       const isInput = target?.closest('input, textarea, .tracking-view__search-wrapper, .search-results-panel')
       if (isInput) {
-        if (visible) setVisible(false)
+        if (isVisible) {
+          isVisible = false
+          cursor.classList.remove('tactical-cursor--visible')
+        }
         return
       }
-      if (!visible) setVisible(true)
 
-      // Check if hovering interactive element
-      const interactive = target?.closest('button, a, .scene-label, .telemetry__row, .stat-row, .chart__milestone, [role="button"]')
+      // Check if hovering interactive target
+      const interactive = target?.closest(
+        'button, a, .scene-label, .telemetry__row, .stat-row, .chart__milestone, [role="button"]',
+      )
       if (interactive) {
         if (!isLocked) {
-          setIsLocked(true)
+          isLocked = true
+          cursor.classList.add('tactical-cursor--locked')
           const text = interactive.getAttribute('aria-label') || interactive.textContent?.trim().slice(0, 18) || 'TARGET'
-          setTargetName(text)
+          if (lockEl) {
+            lockEl.textContent = `LOCK: ${text}`
+            lockEl.style.display = 'inline'
+          }
         }
       } else if (isLocked) {
-        setIsLocked(false)
-        setTargetName(null)
+        isLocked = false
+        cursor.classList.remove('tactical-cursor--locked')
+        if (lockEl) lockEl.style.display = 'none'
       }
     }
 
-    const handleMouseLeave = () => setVisible(false)
-    const handleMouseEnter = () => setVisible(true)
+    const handleMouseLeave = () => {
+      isVisible = false
+      cursor.classList.remove('tactical-cursor--visible')
+    }
+
+    const handleMouseEnter = () => {
+      isVisible = true
+      cursor.classList.add('tactical-cursor--visible')
+    }
 
     const tick = () => {
-      // Smooth interpolation for trailing brackets, instant for center dot
+      // Smooth interpolation for trailing reticle brackets
       curX += (mouseX - curX) * 0.4
       curY += (mouseY - curY) * 0.4
-
-      if (cursor) {
-        cursor.style.transform = `translate3d(${curX}px, ${curY}px, 0)`
-      }
+      cursor.style.transform = `translate3d(${curX}px, ${curY}px, 0)`
       rafId = requestAnimationFrame(tick)
     }
 
@@ -82,18 +102,12 @@ export default function TacticalCursor() {
       document.removeEventListener('mouseenter', handleMouseEnter)
       cancelAnimationFrame(rafId)
     }
-  }, [isLocked, visible])
+  }, [isTouchDevice])
 
   if (isTouchDevice) return null
 
   return (
-    <div
-      ref={cursorRef}
-      className={`tactical-cursor ${visible ? 'tactical-cursor--visible' : ''} ${
-        isLocked ? 'tactical-cursor--locked' : ''
-      }`}
-      aria-hidden="true"
-    >
+    <div ref={cursorRef} className="tactical-cursor" aria-hidden="true">
       {/* Precision Center Aiming Dot */}
       <div className="tactical-cursor__dot" />
 
@@ -109,14 +123,12 @@ export default function TacticalCursor() {
 
       {/* Live Coordinate Badge */}
       <div className="tactical-cursor__readout">
-        <span className="tactical-cursor__az-el">
-          AZ:{String(coords.x).padStart(3, '0')}° EL:{String(coords.y).padStart(2, '0')}°
+        <span className="tactical-cursor__az-el" ref={coordsRef}>
+          AZ:000° EL:00°
         </span>
-        {isLocked && (
-          <span className="tactical-cursor__lock-badge">
-            LOCK: {targetName || 'ACQUIRED'}
-          </span>
-        )}
+        <span className="tactical-cursor__lock-badge" ref={lockBadgeRef} style={{ display: 'none' }}>
+          LOCK: ACQUIRED
+        </span>
       </div>
     </div>
   )

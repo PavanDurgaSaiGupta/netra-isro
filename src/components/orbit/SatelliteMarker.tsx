@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Html } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -90,36 +90,13 @@ export default function SatelliteMarker({
   const labelRef = useRef<HTMLDivElement>(null)
   const [hovered, setHovered] = useState(false)
 
-  // Direction of travel (ascending vs descending), resolved from the previous
-  // propagation tick — one tick of lag on first sight, then it locks on.
-  const ascendRef = useRef(true)
-  const lastLatRef = useRef(sat.lat)
+  // Direction of travel (ascending vs descending) resolved from ECI orbit velocity
+  const isAscending = sat.isAscending ?? true
 
-  // Trail line object — lazily created once (React-sanctioned lazy ref init),
-  // geometry swapped in the layout effect below, disposed on unmount.
-  // R3F never disposes <primitive> objects — release the GPU buffers ourselves.
-  const trailLineRef = useRef<THREE.Line | null>(null)
-  if (trailLineRef.current === null) {
-    trailLineRef.current = new THREE.Line(
-      new THREE.BufferGeometry(),
-      new THREE.LineBasicMaterial({ color: '#00f0ff', transparent: true, opacity: 0.35 }),
-    )
-  }
-
-  // Rebuild the trail ring in the satellite's orbital plane each propagation
-  // tick (pos3D changes identity) and re-tint it for selection. Runs as a
-  // layout effect so the ring is never painted empty.
-  useLayoutEffect(() => {
-    const line = trailLineRef.current
-    if (!line) return
-
-    if (Math.abs(sat.lat - lastLatRef.current) > 1e-7) {
-      ascendRef.current = sat.lat > lastLatRef.current
-    }
-    lastLatRef.current = sat.lat
-
+  // Rebuild the trail ring in the satellite's orbital plane each propagation tick
+  const trailGeometry = useMemo(() => {
     const r = Math.hypot(...pos)
-    const { alpha, sinI, cosI } = computeOrbitBasis(sat.lat, sat.lng, sat.inclinationDeg, ascendRef.current)
+    const { alpha, sinI, cosI } = computeOrbitBasis(sat.lat, sat.lng, sat.inclinationDeg, isAscending)
 
     const cosNode = Math.cos(alpha)
     const sinNode = Math.sin(alpha)
@@ -136,26 +113,28 @@ export default function SatelliteMarker({
     }
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    line.geometry.dispose()
-    line.geometry = g
+    return g
+  }, [pos, sat.lat, sat.lng, sat.inclinationDeg, isAscending])
 
-    const material = line.material as THREE.LineBasicMaterial
-    material.color.set(isSelected ? '#00f0ff' : sat.color)
-    material.opacity = isSelected ? 0.9 : 0.35
-  }, [pos, sat.lat, sat.lng, sat.inclinationDeg, sat.color, isSelected])
+  const trailMaterial = useMemo(() => {
+    return new THREE.LineBasicMaterial({
+      color: isSelected ? '#00f0ff' : sat.color,
+      transparent: true,
+      opacity: isSelected ? 0.9 : 0.35,
+    })
+  }, [isSelected, sat.color])
 
-  // Unmount: release the trail's GPU buffers
-  useEffect(
-    () => () => {
-      const line = trailLineRef.current
-      if (line) {
-        line.geometry.dispose()
-        ;(line.material as THREE.Material).dispose()
-        trailLineRef.current = null
-      }
-    },
-    [],
-  )
+  const trailLine = useMemo(() => {
+    return new THREE.Line(trailGeometry, trailMaterial)
+  }, [trailGeometry, trailMaterial])
+
+  // Dispose buffer geometry and material when replaced or on unmount
+  useEffect(() => {
+    return () => {
+      trailGeometry.dispose()
+      trailMaterial.dispose()
+    }
+  }, [trailGeometry, trailMaterial])
 
   useFrame((_, dt) => {
     if (reticleRef.current && isSelected) reticleRef.current.rotation.z += dt * 2.2
@@ -187,7 +166,7 @@ export default function SatelliteMarker({
 
   return (
     <group>
-      <primitive object={trailLineRef.current!} />
+      <primitive object={trailLine} />
       <group position={pos}>
         <mesh
           onClick={(e) => {
@@ -253,7 +232,7 @@ export default function SatelliteMarker({
             </mesh>
           </group>
         )}
-        <pointLight color={isSelected ? '#00f0ff' : sat.color} intensity={isSelected ? 0.8 : 0.2} distance={0.5} />
+        {isSelected && <pointLight color="#00f0ff" intensity={0.65} distance={1.2} />}
         <Html position={[0, 0, 0]} center={false} style={{ pointerEvents: 'auto' }}>
           <div
             ref={labelRef}

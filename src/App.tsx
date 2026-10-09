@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import type { Location } from 'react-router-dom'
 import Lenis from 'lenis'
-import { gsap, useGSAP, EASE, DUR, prefersReducedMotion } from './lib/motion'
+import { gsap, ScrollTrigger, useGSAP, EASE, DUR, prefersReducedMotion } from './lib/motion'
 import { SatelliteProvider } from './context/SatelliteContext'
 import Sidebar from './components/shell/Sidebar'
 import TopBar from './components/shell/TopBar'
@@ -107,23 +107,34 @@ function AppShell() {
   const lenisRef = useRef<Lenis | null>(null)
   const isSmoothRoute = CONTENT_ROUTES.has(location.pathname)
 
-  // Lenis smooth scroll on content routes only (landing, about); the scroll container
+  // T04: Lenis smooth scroll on content routes only (landing, about); the scroll container
   // is .app-shell__viewport, so it is passed as the Lenis wrapper.
+  // Lenis is synchronized with gsap.ticker and updates ScrollTrigger on scroll.
   useEffect(() => {
     if (!isSmoothRoute) return
     const wrapper = viewportRef.current
     const content = scrollContentRef.current
     if (!wrapper || !content || prefersReducedMotion()) return
+
     const lenis = new Lenis({ wrapper, content, duration: 1.05 })
     lenisRef.current = lenis
-    let rafId = 0
-    const raf = (time: number) => {
-      lenis.raf(time)
-      rafId = requestAnimationFrame(raf)
+
+    ScrollTrigger.defaults({ scroller: wrapper })
+    const onLenisScroll = () => {
+      ScrollTrigger.update()
     }
-    rafId = requestAnimationFrame(raf)
+    lenis.on('scroll', onLenisScroll)
+
+    const tickerCb = (time: number) => {
+      lenis.raf(time * 1000)
+    }
+    gsap.ticker.add(tickerCb)
+    gsap.ticker.lagSmoothing(0)
+
     return () => {
-      cancelAnimationFrame(rafId)
+      gsap.ticker.remove(tickerCb)
+      lenis.off('scroll', onLenisScroll)
+      ScrollTrigger.defaults({ scroller: undefined })
       lenisRef.current = null
       lenis.destroy()
     }

@@ -25,6 +25,17 @@ export interface AlertLogItem {
   severity: 'nominal' | 'warning' | 'alert'
 }
 
+export interface SatelliteCatalogStats {
+  total: number
+  isroCount: number
+  debrisCount: number
+  apiStatus: 'ONLINE' | 'SYNCING' | 'STANDBY'
+  dataSource: 'celestrak' | 'wheretheiss' | 'cached' | 'seed'
+  lastSyncTime: string
+}
+
+const SatelliteStatsContext = createContext<SatelliteCatalogStats | null>(null)
+
 interface SatelliteContextType {
   satellites: SatelliteItem[]
   loading: boolean
@@ -157,8 +168,9 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [])
 
   useEffect(() => {
+    const req = requestRef
     void loadData()
-    return () => { requestRef.current++ }
+    return () => { req.current++ }
   }, [loadData])
 
   // Propagate all satellites every 1.5 seconds using satellite.js SGP4 — at sim time.
@@ -300,7 +312,9 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }),
     [
       satellites,
+      loading,
       selectedSat,
+      setSelectedSat,
       searchQuery,
       filterRegime,
       filteredSatellites,
@@ -324,15 +338,40 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ],
   )
 
+  const statsValue = useMemo<SatelliteCatalogStats>(() => {
+    let isro = 0
+    let debris = 0
+    for (const item of rawCatalog) {
+      if (item.operator.includes('ISRO')) isro++
+      if (item.type === 'debris') debris++
+    }
+    return {
+      total: rawCatalog.length,
+      isroCount: isro,
+      debrisCount: debris,
+      apiStatus,
+      dataSource,
+      lastSyncTime,
+    }
+  }, [rawCatalog, apiStatus, dataSource, lastSyncTime])
+
   return (
-    <SatelliteContext.Provider value={contextValue}>
-      {children}
-    </SatelliteContext.Provider>
+    <SatelliteStatsContext.Provider value={statsValue}>
+      <SatelliteContext.Provider value={contextValue}>
+        {children}
+      </SatelliteContext.Provider>
+    </SatelliteStatsContext.Provider>
   )
 }
 
 export function useSatellites() {
   const ctx = useContext(SatelliteContext)
   if (!ctx) throw new Error('useSatellites must be used within a SatelliteProvider')
+  return ctx
+}
+
+export function useSatelliteStats() {
+  const ctx = useContext(SatelliteStatsContext)
+  if (!ctx) throw new Error('useSatelliteStats must be used within a SatelliteProvider')
   return ctx
 }

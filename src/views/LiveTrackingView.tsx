@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useSatellites } from '../context/SatelliteContext'
 import OrbitScene from '../components/OrbitScene'
+import WebGLErrorBoundary from '../components/WebGLErrorBoundary'
 import SystemStatusPanel from '../components/console/SystemStatusPanel'
 import TelemetryReadout from '../components/console/TelemetryReadout'
 import SatelliteDetailDrawer from '../components/console/SatelliteDetailDrawer'
 import OverheadRadar from '../components/OverheadRadar'
 import TimeControls from '../components/console/TimeControls'
 import LiveDateline from '../components/console/LiveDateline'
+import EarthLoadingConfirmation from '../components/console/EarthLoadingConfirmation'
+import { useAdaptiveRendering } from '../lib/adaptiveRendering'
 import type { SatelliteItem } from '../services/satelliteData'
 
 const REGIMES = ['ALL', 'ISRO', 'DEBRIS', 'LEO', 'GEO'] as const
@@ -27,17 +30,26 @@ export default function LiveTrackingView() {
     apiStatus,
     lastSyncTime,
   } = useSatellites()
+  const { profile } = useAdaptiveRendering()
 
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>('none')
-  const [isMobile, setIsMobile] = useState(false)
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 1024 : false))
+  const [showConfirmModal, setShowConfirmModal] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return sessionStorage.getItem('netra_earth_confirmed') !== 'true'
+  })
 
-  // Detect small screens
+  const handleConfirmEarth = () => {
+    sessionStorage.setItem('netra_earth_confirmed', 'true')
+    setShowConfirmModal(false)
+  }
+
+  // Detect small screens on resize
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 1024)
     }
-    checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
@@ -85,7 +97,9 @@ export default function LiveTrackingView() {
 
       {/* 3D Orbit Scene fills the entire background workspace with Centered Earth */}
       <div className="tracking-view__scene-container">
-        <OrbitScene />
+        <WebGLErrorBoundary>
+          <OrbitScene />
+        </WebGLErrorBoundary>
       </div>
 
       {/* Mobile Backdrop when a HUD modal is open */}
@@ -301,6 +315,16 @@ export default function LiveTrackingView() {
           <span>API: CELESTRAK / SGP4 ({apiStatus})</span>
           <span className="hud__faint">• {lastSyncTime}</span>
         </div>
+        <button
+          type="button"
+          className="tracking-view__confirm-badge hud-text"
+          onClick={() => setShowConfirmModal(true)}
+          title="Click to inspect 3D Earth readiness & auto-adaptive rendering profile"
+        >
+          <span className="tracking-view__confirm-dot" />
+          <span>3D EARTH: CONFIRMED READY</span>
+          <span className="hud__faint">• {profile.label.split('//')[0]?.trim()}</span>
+        </button>
         <SystemStatusPanel />
       </div>
 
@@ -417,6 +441,14 @@ export default function LiveTrackingView() {
 
       {/* Slide-in Detailed Telemetry Drawer */}
       <SatelliteDetailDrawer />
+
+      {/* 3D Earth Loading Confirmation & Telemetry Verification HUD */}
+      <EarthLoadingConfirmation
+        isOpen={showConfirmModal}
+        totalSatellites={satellites.length}
+        onConfirm={handleConfirmEarth}
+        onClose={() => setShowConfirmModal(false)}
+      />
     </div>
   )
 }

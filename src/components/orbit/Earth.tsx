@@ -14,13 +14,13 @@ export function EarthFallback() {
       </mesh>
       <mesh>
         <sphereGeometry args={[R_EARTH * 1.002, 24, 24]} />
-        <meshBasicMaterial color="#00f0ff" wireframe transparent opacity={0.2} />
+        <meshBasicMaterial color="#00f0ff" wireframe transparent opacity={0.25} />
       </mesh>
     </group>
   )
 }
 
-export function Earth({ stage }: { stage: number }) {
+export function Earth({ segments = 64 }: { stage?: number; segments?: number }) {
   const base = import.meta.env.BASE_URL
   const textures = useLoader(TextureLoader, [
     `${base}textures/earth-day.jpg`,
@@ -29,30 +29,38 @@ export function Earth({ stage }: { stage: number }) {
     `${base}textures/earth-clouds.png`,
   ]) as [THREE.Texture, THREE.Texture, THREE.Texture, THREE.Texture]
   const [day, normal, specular, clouds] = textures
+
+  // Configure color space & texture filtering once on load (Three.js imperative texture properties)
   useEffect(() => {
     day.colorSpace = THREE.SRGBColorSpace
-    for (const t of [day, normal, specular] as THREE.Texture[]) t.anisotropy = 8
-  }, [day, normal, specular])
+    clouds.colorSpace = THREE.SRGBColorSpace
+    for (const t of [day, normal, specular, clouds]) {
+      t.anisotropy = 8
+      t.needsUpdate = true
+    }
+  }, [day, normal, specular, clouds])
 
   const cloudRef = useRef<THREE.Mesh>(null)
   useFrame((_, dt) => {
     if (cloudRef.current) cloudRef.current.rotation.y += dt * 0.007
   })
 
+  // Atmospheric Fresnel limb scattering shader
   const atmosMat = useMemo(
     () =>
       new THREE.ShaderMaterial({
         vertexShader: /* glsl */ `
-          varying vec3 vN;
+          varying vec3 vNormal;
           void main() {
-            vN = normalize(normalMatrix * normal);
+            vNormal = normalize(normalMatrix * normal);
             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
           }`,
         fragmentShader: /* glsl */ `
-          varying vec3 vN;
+          varying vec3 vNormal;
           void main() {
-            float i = pow(0.72 - dot(vN, vec3(0.0, 0.0, 1.0)), 3.2);
-            gl_FragColor = vec4(0.15, 0.55, 1.0, 0.8) * max(i, 0.0);
+            // View-aligned Fresnel intensity: highest along the silhouette horizon
+            float intensity = pow(0.68 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.6);
+            gl_FragColor = vec4(0.05, 0.68, 1.0, 0.8) * max(intensity, 0.0);
           }`,
         side: THREE.BackSide,
         transparent: true,
@@ -62,33 +70,43 @@ export function Earth({ stage }: { stage: number }) {
     [],
   )
 
-  // R3F does not auto-dispose materials passed as props (material={atmosMat}) —
-  // release the shader program + uniforms when the scene unmounts.
   useEffect(() => () => atmosMat.dispose(), [atmosMat])
+
+  const normalScale = useMemo(() => new THREE.Vector2(0.85, 0.85), [])
+  const specularColor = useMemo(() => new THREE.Color('#386494'), [])
 
   return (
     <group>
+      {/* Planetary Surface Globe with Specular Ocean Glint & Normal Topography */}
       <mesh receiveShadow>
-        <sphereGeometry args={[R_EARTH, 64, 64]} />
-        <meshStandardMaterial
-          map={stage >= 2 ? day : undefined}
-          normalMap={stage >= 2 ? normal : undefined}
-          roughness={0.58}
-          metalness={0.08}
-          color={stage >= 2 ? '#ffffff' : '#0c1a2e'}
+        <sphereGeometry args={[R_EARTH, segments, segments]} />
+        <meshPhongMaterial
+          map={day}
+          normalMap={normal}
+          normalScale={normalScale}
+          specularMap={specular}
+          specular={specularColor}
+          shininess={20}
         />
       </mesh>
-      {stage >= 3 && (
-        <mesh ref={cloudRef} scale={1.012} castShadow receiveShadow>
-          <sphereGeometry args={[R_EARTH, 64, 64]} />
-          <meshStandardMaterial map={clouds} transparent opacity={0.45} blending={THREE.NormalBlending} depthWrite={false} roughness={0.9} />
-        </mesh>
-      )}
-      {stage >= 4 && (
-        <mesh scale={1.05} material={atmosMat}>
-          <sphereGeometry args={[R_EARTH, 48, 48]} />
-        </mesh>
-      )}
+
+      {/* Cloud Deck with Additive Blending to preserve ocean clarity */}
+      <mesh ref={cloudRef} scale={1.014}>
+        <sphereGeometry args={[R_EARTH, segments, segments]} />
+        <meshStandardMaterial
+          map={clouds}
+          transparent
+          opacity={0.38}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          roughness={1.0}
+        />
+      </mesh>
+
+      {/* Atmospheric Ionosphere Limb Glow */}
+      <mesh scale={1.072} material={atmosMat}>
+        <sphereGeometry args={[R_EARTH, Math.min(segments, 48), Math.min(segments, 48)]} />
+      </mesh>
     </group>
   )
 }

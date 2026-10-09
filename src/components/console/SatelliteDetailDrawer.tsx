@@ -35,13 +35,16 @@ export default function SatelliteDetailDrawer() {
   // RF profile — SatNOGS DB (fetched once per 24 h service-side cache, filtered per object)
   const [transmitters, setTransmitters] = useState<RadioTransmitter[] | null>(null)
   const noradId = selectedSat?.noradId ?? null
-  useEffect(() => {
-    let live = true
-    if (noradId === null) {
-      setTransmitters(null)
-      return
-    }
+
+  const [prevNoradId, setPrevNoradId] = useState(noradId)
+  if (prevNoradId !== noradId) {
+    setPrevNoradId(noradId)
     setTransmitters(null)
+  }
+
+  useEffect(() => {
+    if (noradId === null) return
+    let live = true
     fetchTransmitters(noradId)
       .then((rows) => {
         if (live) setTransmitters(rows)

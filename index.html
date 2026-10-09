@@ -2,21 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="NETRA — Bharat's Eyes in Orbit. A concept mission-control site visualizing India's space debris tracking capabilities." />
     <meta name="theme-color" content="#05070A" />
+    <!-- Single Page App Redirect Restoration for GitHub Pages / static hosting -->
+    <script>
+      (function(l) {
+        if (l.search && l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) { 
+            return s.replace(/~and~/g, '&');
+          }).join('?');
+          var basePath = l.pathname.endsWith('/') ? l.pathname.slice(0, -1) : l.pathname;
+          window.history.replaceState(null, null,
+            basePath + decoded + l.hash
+          );
+        }
+      }(window.location));
+    </script>
+    <!-- T10: Content Security Policy — restricts script/style/connect sources -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; font-src 'self'; connect-src 'self' https://celestrak.org https://api.wheretheiss.at https://cache.wheretheiss.at https://www.space-track.org; worker-src blob:;" />
     <title>NETRA — Bharat's Eyes in Orbit</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Font weights audited against src/index.css usage (grep, 2026-10-06): Orbitron
-         700/900, Space Mono 400/700, Inter 400/500/700. Every loaded weight is declared
-         in CSS; every declared weight has a loaded face (orphan 500/600/800 declarations
-         were normalized in index.css to the weights the families ship). -->
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Orbitron:wght@700;900&family=Space+Mono:wght@400;700&display=swap"
-      rel="stylesheet"
-    />
+    <!-- T01: Self-hosted fonts — eliminates render-blocking Google Fonts CDN round-trip.
+         Fonts downloaded to public/fonts/ via download-fonts.mjs; font-display: swap
+         guaranteed in fonts.css so text renders immediately with system font fallback. -->
+    <link rel="stylesheet" href="%BASE_URL%fonts/fonts.css" />
+    <!-- T14: Preload the above-the-fold hero image so the browser discovers it
+         before parsing the React bundle and rendering the img tag. -->
+    <link rel="preload" as="image" href="%BASE_URL%earth_orbit_cinematic.webp" type="image/webp" />
   </head>
   <body>
     <div id="root"></div>

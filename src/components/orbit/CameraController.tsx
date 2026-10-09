@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { gsap } from '../../lib/motion'
 import type { SatelliteItem } from '../../services/satelliteData'
 
@@ -16,7 +17,7 @@ export default function CameraController({
   recenterTrigger,
   resetViewTrigger,
 }: {
-  controlsRef: React.RefObject<any>
+  controlsRef: React.RefObject<OrbitControlsImpl | null>
   selectedSat: SatelliteItem | null
   recenterTrigger: number
   resetViewTrigger: number

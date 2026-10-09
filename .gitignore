@@ -25,3 +25,5 @@ dist-ssr
 
 # ZCode workflow tooling (local only)
 .zcode/
+scratch/
+

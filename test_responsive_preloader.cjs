@@ -11,10 +11,11 @@ const { chromium } = require('playwright')
   // ----------------------------------------------------
   console.log('\n[1/3] Testing Mobile Phone (375x812)...')
   const mobilePage = await browser.newPage({ viewport: { width: 375, height: 812 } })
-  mobilePage.on('console', (m) => {
+  mobilePage.on('console', async (m) => {
     // Ignore external CelesTrak 403 rate limits since seed data handles fallback
     if (m.type() === 'error' && !m.text().includes('celestrak')) {
-      errors.push(`[Mobile Console] ${m.text().slice(0, 200)}`)
+      const full = await Promise.all(m.args().map((a) => a.jsonValue().catch(() => a.toString())))
+      errors.push(`[Mobile Console] ${full.join(' ')}`)
     }
   })
   mobilePage.on('pageerror', (e) => errors.push(`[Mobile PageError] ${String(e).slice(0, 200)}`))
@@ -39,10 +40,10 @@ const { chromium } = require('playwright')
   if (hamburger) {
     await hamburger.click()
     await mobilePage.waitForTimeout(400)
-    const sidebarOpen = await mobilePage.$('.app-sidebar--mobile-open')
+    const sidebarOpen = await mobilePage.$('.radar-nav--mobile-open')
     console.log('✓ Mobile sidebar drawer opened:', !!sidebarOpen)
 
-    const closeBtn = await mobilePage.$('.app-sidebar__mobile-close-btn')
+    const closeBtn = await mobilePage.$('.radar-nav__close')
     if (closeBtn) {
       await closeBtn.click()
       await mobilePage.waitForTimeout(300)
@@ -121,14 +122,14 @@ const { chromium } = require('playwright')
   }
 
   // Navigate to Debris view
-  const debrisLink = await tabletPage.$('.app-sidebar a[href$="/debris"]')
+  const debrisLink = await tabletPage.$('.radar-nav a[href$="/debris"]')
   if (debrisLink) {
     await debrisLink.click()
     await tabletPage.waitForTimeout(1500)
   }
 
-  const debrisTable = await tabletPage.$('.debris-table-wrap')
-  console.log('✓ Debris screening table rendered with scroll wrap on tablet:', !!debrisTable)
+  const debrisTable = await tabletPage.$('.debris-view')
+  console.log('✓ Debris screening table rendered on tablet:', !!debrisTable)
   await tabletPage.close()
 
   // ----------------------------------------------------
@@ -155,7 +156,7 @@ const { chromium } = require('playwright')
     await desktopPage.waitForTimeout(2000)
   }
 
-  const desktopSidebar = await desktopPage.$('.app-sidebar')
+  const desktopSidebar = await desktopPage.$('.radar-nav')
   const desktopRadar = await desktopPage.$('.radar-widget')
   console.log('✓ Desktop sidebar docked:', !!desktopSidebar)
   console.log('✓ Desktop overhead radar widget visible:', !!desktopRadar)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { useSatellites } from '../../context/SatelliteContext'
+import { useSatelliteStats } from '../../context/SatelliteContext'
 import OdometerNumber from './OdometerNumber'
 
 /**
@@ -50,7 +50,7 @@ interface TopBarProps {
 
 export default function TopBar({ mobileMenuOpen = false, onToggleMobileMenu }: TopBarProps) {
   const location = useLocation()
-  const { satellites, loading, apiStatus } = useSatellites()
+  const { total, apiStatus } = useSatelliteStats()
   const [clockValue, setClockValue] = useState(() => istClockValue(new Date()))
   const [cycle, setCycle] = useState(2486)
 
@@ -141,7 +141,7 @@ export default function TopBar({ mobileMenuOpen = false, onToggleMobileMenu }: T
         <div className="app-topbar__stat-pill">
           <span className="app-topbar__status-dot" aria-hidden="true" />
           <span className="app-topbar__stat-text">
-            {loading ? 'SYNCING...' : `${satellites.length} OBJECTS`}
+            {apiStatus === 'SYNCING' && !total ? 'SYNCING...' : `${total} OBJECTS`}
           </span>
         </div>
 

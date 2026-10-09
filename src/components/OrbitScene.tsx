@@ -1,6 +1,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import * as THREE from 'three'
 import * as satellite from 'satellite.js'
 import { useSatellites } from '../context/SatelliteContext'
@@ -17,19 +18,36 @@ import GroundStationBeam from './orbit/GroundStationBeam'
 import { Earth, EarthFallback } from './orbit/Earth'
 import SatelliteMarker from './orbit/SatelliteMarker'
 import CameraController from './orbit/CameraController'
+import { useAdaptiveRendering, isWebGLAvailable } from '../lib/adaptiveRendering'
 
 function Starfield3D({ count }: { count: number }) {
   const geo = useMemo(() => {
     const pos = new Float32Array(count * 3)
+    const v = new THREE.Vector3()
     for (let i = 0; i < count; i++) {
-      // oxlint-disable-next-line react(purity) — starfield seeded once, randomness is intentional
-      const v = new THREE.Vector3().randomDirection().multiplyScalar(35 + Math.random() * 25)
+      // Deterministic spherical distribution (pure, reproducible across renders)
+      const u = (((Math.sin(i * 12.9898 + 78.233) * 43758.5453) % 1) + 1) % 1
+      const theta = ((((Math.sin(i * 39.346 + 11.135) * 43758.5453) % 1) + 1) % 1) * Math.PI * 2
+      const phi = Math.acos(2 * u - 1)
+      const dist = 35 + ((((Math.sin(i * 73.156 + 45.123) * 43758.5453) % 1) + 1) % 1) * 25
+      v.set(
+        dist * Math.sin(phi) * Math.cos(theta),
+        dist * Math.sin(phi) * Math.sin(theta),
+        dist * Math.cos(phi),
+      )
       pos.set([v.x, v.y, v.z], i * 3)
     }
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
     return g
   }, [count])
+
+  useEffect(() => {
+    return () => {
+      geo.dispose()
+    }
+  }, [geo])
+
   return (
     <points geometry={geo}>
       <pointsMaterial size={0.075} color="#d4e0ff" transparent opacity={0.75} sizeAttenuation depthWrite={false} />
@@ -281,22 +299,15 @@ function ConstellationLens({
 }
 
 export default function OrbitScene() {
-  const controlsRef = useRef<any>(null)
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const { filteredSatellites, selectedSat, setSelectedSat, recenterTrigger, resetViewTrigger } = useSatellites()
-  const [loadingStage, setLoadingStage] = useState(1)
+  const { profile } = useAdaptiveRendering()
   const prefersReduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const [autoRotate, setAutoRotate] = useState(() => !prefersReduced)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const mobile = typeof window !== 'undefined' && window.innerWidth < 768
 
   useEffect(() => {
-    const t2 = setTimeout(() => setLoadingStage(2), 200)
-    const t3 = setTimeout(() => setLoadingStage(3), 500)
-    const t4 = setTimeout(() => setLoadingStage(4), 900)
     return () => {
-      clearTimeout(t2)
-      clearTimeout(t3)
-      clearTimeout(t4)
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     }
   }, [])
@@ -338,20 +349,73 @@ export default function OrbitScene() {
     })
   }, [])
 
+  const hasWebGL = useMemo(() => isWebGLAvailable(), [])
+
+  if (!hasWebGL) {
+    return (
+      <div className="orbit-canvas-container" role="region" aria-label="2D telemetry mode">
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            width: '100%',
+            background: 'radial-gradient(circle at center, #0b1a2e 0%, #05070a 85%)',
+            color: '#e6edf3',
+            textAlign: 'center',
+            padding: '24px',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div style={{ fontSize: 36, marginBottom: 12 }}>🛰️</div>
+          <div
+            style={{
+              fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+              color: '#ff6b1a',
+              fontSize: 11,
+              letterSpacing: '0.12em',
+              marginBottom: 8,
+            }}
+          >
+            ISRO // 2D TELEMETRY MODE ACTIVE
+          </div>
+          <p style={{ maxWidth: 400, fontSize: 13, color: '#8b94a3', lineHeight: 1.5 }}>
+            3D WebGL acceleration is unavailable on this device. Live orbital telemetry, radar sweeps, and satellite tracking feeds remain fully available.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="orbit-canvas-container">
       {/* role="img" lives on the Canvas wrapper (R3F spreads props onto its div), not on
           the container — the lens buttons below must not sit inside a role="img" subtree,
           which removes descendants from the accessibility tree (WCAG 4.1.2). */}
-      <Canvas role="img" aria-label="Interactive 3D globe showing Bharat's satellites and debris in orbit — use mouse to rotate, scroll to zoom, click a satellite to inspect" shadows="soft" dpr={[1, mobile ? 1.25 : 1.75]} camera={{ position: [0, 0, 8.5], fov: 45 }} gl={{ antialias: true, alpha: true }}>
-        <ambientLight color="#1e2e47" intensity={0.65} />
-        <directionalLight position={[8, 3.5, 6]} intensity={2.8} color="#fff8eb" castShadow shadow-mapSize={[2048, 2048]} />
-        <pointLight position={[-6, -3, -4]} intensity={0.45} color="#00f0ff" />
+      <Canvas
+        role="img"
+        aria-label="Interactive 3D globe showing Bharat's satellites and debris in orbit — use mouse to rotate, scroll to zoom, click a satellite to inspect"
+        shadows={profile.shadows}
+        dpr={profile.dpr}
+        camera={{ position: [0, 0, 8.5], fov: 45 }}
+        gl={{ antialias: true, alpha: true }}
+      >
+        <ambientLight color="#0c192c" intensity={0.4} />
+        <directionalLight
+          position={[7, 3.2, 5]}
+          intensity={1.4}
+          color="#fffdf8"
+          castShadow={profile.shadows}
+          shadow-mapSize={[profile.shadowMapSize, profile.shadowMapSize]}
+        />
+        <pointLight position={[-7, -3, -5]} intensity={0.25} color="#005577" />
         <Suspense fallback={<EarthFallback />}>
-          <Earth stage={loadingStage} />
+          <Earth segments={profile.sphereSegments} />
           <GroundStationBeam />
           <IssTrackTrail />
-          <Starfield3D count={mobile ? 600 : 1200} />
+          <Starfield3D count={profile.starCount} />
           <OrbitPlanes />
           {constellations && <ConstellationPoints activeGroups={activeGroups} groups={constellations} />}
           {filteredSatellites.map((sat) => (

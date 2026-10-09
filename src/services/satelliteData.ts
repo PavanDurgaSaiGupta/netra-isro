@@ -40,6 +40,7 @@ export interface SatelliteItem {
   inclinationDeg: number
   periodMin: number
   launchYear: number
+  isAscending?: boolean
 }
 
 // ISTRAC Ground Station Bengaluru coordinates
@@ -141,6 +142,7 @@ export function computeState(
       inclinationDeg,
       periodMin,
       launchYear: base.launchYear || 2019,
+      isAscending: pv.velocity.z >= 0,
     }
   } catch (err) {
     console.warn('Propagation error for', base.name, err)

@@ -4,14 +4,16 @@ import { DUR, EASE, gsap, stagger, useGSAP } from '../lib/motion'
 
 const BRACKET_LINE = ['SPACE', 'IS', 'BHARAT’S', 'NEXT', 'FRONTIER']
 
-export default function Hero() {
+interface HeroProps {
+  orbitalTilt?: number
+}
+
+export default function Hero({ orbitalTilt = 23.4 }: HeroProps) {
   const rootRef = useRef<HTMLElement>(null)
   const cueRef = useRef<HTMLDivElement>(null)
 
   useGSAP(
     () => {
-      // Reduced motion: no JS at all — the default DOM (visible words, still cue)
-      // IS the end-state; gsap.matchMedia re-evaluates if the OS setting changes.
       const mm = gsap.matchMedia()
       mm.add('(prefers-reduced-motion: no-preference)', () => {
         // Word-by-word assemble — stagger 90ms, entrance deceleration (contract §4)
@@ -44,24 +46,14 @@ export default function Hero() {
 
   return (
     <section className="hero" ref={rootRef} id="top">
-      {/* Photorealistic Authentic Earth Imagery Backdrop */}
-      <div className="hero__earth-backdrop">
-        <img
-          src={`${import.meta.env.BASE_URL}earth_orbit_cinematic.jpg`}
-          alt="Planet Earth from orbit showing the Indian subcontinent and atmospheric blue corona"
-          className="hero__earth-img"
-        />
-        <div className="hero__earth-overlay" />
-      </div>
-
       {/* Technical HUD corner reticles */}
       <span className="hero__corner hero__corner--tl" aria-hidden="true" />
       <span className="hero__corner hero__corner--tr" aria-hidden="true" />
 
-      {/* Telemetry coordinate watermark */}
+      {/* Telemetry coordinate watermark with live orbital tilt */}
       <div className="hero__telemetry-tag hud-text" aria-hidden="true">
         <span>TRACKING RADAR: 12.9716° N, 77.5946° E</span>
-        <span>DSSAM ISTRAC BENGALURU • APOGEE 35,786 KM</span>
+        <span id="hero-orbital-tilt">DSSAM ISTRAC BENGALURU • ORBITAL TILT: {orbitalTilt}°</span>
       </div>
 
       <div className="hero__inner">
@@ -110,3 +102,4 @@ export default function Hero() {
     </section>
   )
 }
+

@@ -38,7 +38,7 @@ export default function TelemetryReadout() {
     baseRef.current = { baseVelocity, baseAltitude, baseInclination, baseSignal }
   })
 
-  // Roll to the selected satellite's bases
+  // Roll to the selected satellite's bases on satellite change
   useEffect(() => {
     setLive({
       velocity: baseVelocity,
@@ -46,7 +46,7 @@ export default function TelemetryReadout() {
       inclination: baseInclination,
       signal: baseSignal,
     })
-  }, [baseVelocity, baseAltitude, baseInclination, baseSignal])
+  }, [selectedSat?.id, baseVelocity, baseAltitude, baseInclination, baseSignal])
 
   // Realistic micro sensor fluctuation every 2.4 seconds — reads the live bases through a
   // ref so the interval survives the per-tick dep churn, and hands the jittered targets

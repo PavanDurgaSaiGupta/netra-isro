@@ -30,10 +30,10 @@ const BOOT_LINES: BootLine[] = [
   { label: 'GUIDANCE', status: 'NOMINAL', tone: 'ok', kind: 'static' },
   { label: 'PROPAGATION (SGP4)', status: 'NOMINAL', tone: 'ok', kind: 'static' },
   { label: 'UPLINK (CELESTRAK)', status: 'LIVE', tone: 'ok', kind: 'uplink' },
-  { label: 'TEXTURE ASSETS', status: 'NOMINAL', tone: 'ok', kind: 'texture' },
   { label: 'INSTRUMENT GRID', status: 'NOMINAL', tone: 'ok', kind: 'static' },
   { label: 'DSSAM CORE', status: 'ARMED', tone: 'warn', kind: 'static' },
 ]
+
 
 const TYPE_MS_PER_CHAR = 28
 const LINE_STAGGER_MS = 90
@@ -74,6 +74,11 @@ export default function MissionPreloader({ onComplete }: MissionPreloaderProps) 
     const finish = () => {
       setGone(true)
       onComplete?.()
+      // T20: Focus management after boot sequence exits
+      const mainContent = document.getElementById('main-content') ?? document.querySelector('main')
+      if (mainContent instanceof HTMLElement) {
+        mainContent.focus({ preventScroll: true })
+      }
     }
     if (!root || prefersReducedMotion()) {
       finish()
@@ -126,35 +131,26 @@ export default function MissionPreloader({ onComplete }: MissionPreloaderProps) 
     return () => cancelAnimationFrame(rafId)
   }, [])
 
-  // Asset pipeline (textures + web fonts) folded into the poll; safety timer prevents hangs.
+  // Asset pipeline — only web fonts are checked here. Earth textures are only needed
+  // by /tracking (Three.js) and must not be pre-fetched on the landing page.
+  // T03: removed texture downloads (~1.3 MB) from the landing-route boot poll.
   useEffect(() => {
-    const base = import.meta.env.BASE_URL || '/'
-    const assets = [
-      'textures/earth-day.jpg',
-      'textures/earth-normal.jpg',
-      'textures/earth-specular.jpg',
-      'textures/earth-clouds.png',
-      'earth_orbit_cinematic.jpg',
-    ]
-    let remaining = assets.length + 1 // +1 for fonts
+    let alive = true
     const settle = () => {
-      remaining -= 1
-      if (remaining <= 0) setAssetsReady(true)
+      if (alive) setAssetsReady(true)
     }
-    assets.forEach((src) => {
-      const img = new Image()
-      img.onload = settle
-      img.onerror = settle // never block the poll on a missing asset
-      img.src = base + src
-    })
     if (document.fonts) {
       document.fonts.ready.then(settle).catch(settle)
     } else {
       settle()
     }
-    const safety = setTimeout(setAssetsReady, ASSET_SAFETY_TIMEOUT_MS)
-    return () => clearTimeout(safety)
+    const safety = setTimeout(() => { if (alive) setAssetsReady(true) }, ASSET_SAFETY_TIMEOUT_MS)
+    return () => {
+      alive = false
+      clearTimeout(safety)
+    }
   }, [])
+
 
   // Poll verdict: one lock sound the moment every line is typed and assets are in.
   useEffect(() => {
@@ -252,11 +248,9 @@ export default function MissionPreloader({ onComplete }: MissionPreloaderProps) 
         ? { text: 'LIVE', tone: 'ok' }
         : { text: apiStatus, tone: 'warn' }
     }
-    if (line.kind === 'texture') {
-      return assetsReady ? { text: 'NOMINAL', tone: 'ok' } : { text: 'LOADING', tone: 'warn' }
-    }
     return { text: line.status, tone: line.tone }
   }
+
 
   return (
     <div ref={bootRef} className="boot" onClick={enter}>
