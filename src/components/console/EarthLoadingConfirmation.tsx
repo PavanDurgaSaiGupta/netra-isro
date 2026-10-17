@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { detectDeviceProfile } from '../../lib/adaptiveRendering'
 
 interface Props {
@@ -15,6 +15,48 @@ interface DiagnosticItem {
   done: boolean
 }
 
+/** Fresh diagnostic rows for one HUD session — counts and profile read live. */
+function buildDiagnostics(
+  totalSatellites: number,
+  prof: ReturnType<typeof detectDeviceProfile>,
+): DiagnosticItem[] {
+  return [
+    {
+      id: 'uplink',
+      label: 'TELEMETRY UPLINK ESTABLISHED',
+      sublabel: 'ISTRAC BENGALURU GROUND STATION // X-BAND DUAL-POL',
+      done: false,
+    },
+    {
+      id: 'ephemeris',
+      label: 'SGP4 ORBITAL MECHANICS PROPAGATION',
+      sublabel:
+        totalSatellites > 0
+          ? `${totalSatellites} ACTIVE SATELLITES & DEBRIS TRACKED`
+          : 'SYNCHRONIZING TRACKED-OBJECT CATALOG',
+      done: false,
+    },
+    {
+      id: 'mesh',
+      label: '3D PLANETARY SPHERE COMPILED',
+      sublabel: 'WGS-84 OBLATE SPHEROID & ATMOSPHERIC LIMB SHADER',
+      done: false,
+    },
+    {
+      id: 'textures',
+      label: 'HIGH-RES TOPOGRAPHY SUITE LOADED',
+      sublabel: 'DAY MARBLE (2K) + NORMAL + SPECULAR OCEANS + ADDITIVE CLOUDS (100%)',
+      done: false,
+    },
+    {
+      id: 'adaptive',
+      label: 'AUTO-ADAPTIVE HARDWARE PROFILE APPLIED',
+      sublabel: `${prof.label} (DPR: ${prof.dpr[1]}x, ${prof.starCount} STARS, SHADOWS: ${prof.shadows ? 'ON' : 'OFF'})`,
+      done: false,
+    },
+  ]
+}
+
 export default function EarthLoadingConfirmation({
   totalSatellites,
   onConfirm,
@@ -22,46 +64,33 @@ export default function EarthLoadingConfirmation({
   onClose,
 }: Props) {
   const [progress, setProgress] = useState(15)
-  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>(() => {
-    const prof = detectDeviceProfile()
-    return [
-      {
-        id: 'uplink',
-        label: 'TELEMETRY UPLINK ESTABLISHED',
-        sublabel: 'ISTRAC BENGALURU GROUND STATION // X-BAND DUAL-POL',
-        done: false,
-      },
-      {
-        id: 'ephemeris',
-        label: 'SGP4 ORBITAL MECHANICS PROPAGATION',
-        sublabel: `${totalSatellites || 93} ACTIVE SATELLITES & DEBRIS TRACKED`,
-        done: false,
-      },
-      {
-        id: 'mesh',
-        label: '3D PLANETARY SPHERE COMPILED',
-        sublabel: 'WGS-84 OBLATE SPHEROID & ATMOSPHERIC LIMB SHADER',
-        done: false,
-      },
-      {
-        id: 'textures',
-        label: 'HIGH-RES TOPOGRAPHY SUITE LOADED',
-        sublabel: 'DAY MARBLE (2K) + NORMAL + SPECULAR OCEANS + ADDITIVE CLOUDS (100%)',
-        done: false,
-      },
-      {
-        id: 'adaptive',
-        label: 'AUTO-ADAPTIVE HARDWARE PROFILE APPLIED',
-        sublabel: `${prof.label} (DPR: ${prof.dpr[1]}x, ${prof.starCount} STARS, SHADOWS: ${prof.shadows ? 'ON' : 'OFF'})`,
-        done: false,
-      },
-    ]
-  })
+  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>(() =>
+    buildDiagnostics(totalSatellites, detectDeviceProfile()),
+  )
   const [isReady, setIsReady] = useState(false)
   const [autoSeconds, setAutoSeconds] = useState(3)
 
+  // Keep the latest onConfirm without re-keying the countdown effect below:
+  // the parent re-renders on every FPS tick of the adaptive watchdog, and a
+  // fresh callback identity kept cancelling the pending 1 s timeout before it
+  // could ever fire — the countdown stalled, and reopening the HUD (with the
+  // stale autoSeconds already at 0) confirmed instantly (#3).
+  const onConfirmRef = useRef(onConfirm)
+  useEffect(() => {
+    onConfirmRef.current = onConfirm
+  })
+
   useEffect(() => {
     if (!isOpen) return
+
+    // Starts a clean checklist + countdown for this open session (the parent
+    // mounts the HUD per open, so there is no closed-state to leak) and drives
+    // the staged verification timers. `totalSatellites` is a dep so a late
+    // catalog sync (seed → live count) refreshes the count truthfully.
+    setProgress(15)
+    setDiagnostics(buildDiagnostics(totalSatellites, detectDeviceProfile()))
+    setIsReady(false)
+    setAutoSeconds(3)
 
     // Simulate crisp progressive verification sequence
     const t1 = setTimeout(() => {
@@ -85,20 +114,21 @@ export default function EarthLoadingConfirmation({
       clearTimeout(t2)
       clearTimeout(t3)
     }
-  }, [isOpen])
+  }, [isOpen, totalSatellites])
 
-  // Countdown timer once ready
+  // Countdown timer once ready — identity-stable now, so parent re-renders
+  // can no longer restart it mid-second (#3).
   useEffect(() => {
     if (!isReady || !isOpen) return
     if (autoSeconds <= 0) {
-      onConfirm()
+      onConfirmRef.current()
       return
     }
     const timer = setTimeout(() => {
       setAutoSeconds((s) => s - 1)
     }, 1000)
     return () => clearTimeout(timer)
-  }, [isReady, isOpen, autoSeconds, onConfirm])
+  }, [isReady, isOpen, autoSeconds])
 
   if (!isOpen) return null
 
@@ -129,7 +159,10 @@ export default function EarthLoadingConfirmation({
               onClick={onClose}
               title="Close Verification HUD"
             >
-              ✕
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
             </button>
           )}
         </div>
@@ -163,7 +196,15 @@ export default function EarthLoadingConfirmation({
               className={`earth-confirm-modal__item ${diag.done ? 'is-done' : ''}`}
             >
               <div className="earth-confirm-modal__check-icon">
-                {diag.done ? '✓' : '◌'}
+                {diag.done ? (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8" strokeDasharray="3 3" />
+                  </svg>
+                )}
               </div>
               <div className="earth-confirm-modal__item-info">
                 <div className="earth-confirm-modal__item-label hud-text">
@@ -193,7 +234,7 @@ export default function EarthLoadingConfirmation({
             )}
           </button>
           <div className="earth-confirm-modal__meta hud-text">
-            <span>● 3D HARDWARE ACCELERATED</span>
+            <span className="earth-confirm-modal__meta-dot">3D HARDWARE ACCELERATED</span>
             <span>• ZERO-LATENCY FRAME PIPELINE</span>
           </div>
         </div>

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { animate, stagger } from 'animejs'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { DUR, EASE, gsap, prefersReducedMotion } from '../../lib/motion'
 
@@ -175,31 +174,36 @@ export default function SatelliteShowcase() {
       start: 'top 75%',
       once: true,
       onEnter: () => {
-        // Anime.js staggered deployment of solar array panels
-        animate('.sat-wing__panel', {
-          scaleX: [0, 1],
-          opacity: [0, 1],
-          delay: stagger(120, { start: 200 }),
-          duration: 900,
-          ease: 'outElastic(1, .7)',
-        })
+        // GSAP staggered deployment of solar array panels (ported from anime.js —
+        // outElastic(1, .7) ≈ elastic.out(1, 0.7); anime delay stagger(120, start 200)
+        // ≈ base delay 0.2s + 0.12s stagger per panel)
+        gsap.fromTo(
+          '.sat-wing__panel',
+          { scaleX: 0, opacity: 0 },
+          {
+            scaleX: 1,
+            opacity: 1,
+            duration: 0.9,
+            delay: 0.2,
+            stagger: 0.12,
+            ease: 'elastic.out(1, 0.7)',
+            overwrite: 'auto',
+          },
+        )
 
-        // Anime.js parabolic reflector deployment
-        animate('.sat-dish__parabola', {
-          scale: [0.35, 1],
-          opacity: [0, 1],
-          duration: 750,
-          ease: 'outBack',
-        })
+        // Parabolic reflector deployment (anime outBack ≈ back.out(1.7))
+        gsap.fromTo(
+          '.sat-dish__parabola',
+          { scale: 0.35, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.75, ease: 'back.out(1.7)', overwrite: 'auto' },
+        )
 
-        // Anime.js staggered hotspot button entrance
-        animate('.sat-showcase__hotspot-btn', {
-          translateY: [16, 0],
-          opacity: [0, 1],
-          delay: stagger(90, { start: 400 }),
-          duration: 600,
-          ease: 'outQuad',
-        })
+        // Staggered hotspot button entrance
+        gsap.fromTo(
+          '.sat-showcase__hotspot-btn',
+          { y: 16, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.6, delay: 0.4, stagger: 0.09, ease: 'power2.out', overwrite: 'auto' },
+        )
       },
     })
 
@@ -208,27 +212,24 @@ export default function SatelliteShowcase() {
     }
   }, [reducedMotion])
 
-  // Anime.js kinetic transition when active subsystem changes
+  // Kinetic transition when active subsystem changes (ported from anime.js)
   useEffect(() => {
     if (reducedMotion) return
-    animate('.sat-showcase__detail-card', {
-      translateX: [16, 0],
-      opacity: [0.4, 1],
-      duration: 380,
-      ease: 'outCubic',
-    })
+    gsap.fromTo(
+      '.sat-showcase__detail-card',
+      { x: 16, opacity: 0.4 },
+      { x: 0, opacity: 1, duration: 0.38, ease: 'power3.out', overwrite: 'auto' },
+    )
   }, [activeSubsys, reducedMotion])
 
-  // Anime.js kinetic gauge stagger on preset change
+  // Kinetic gauge stagger on preset change (ported from anime.js)
   useEffect(() => {
     if (reducedMotion) return
-    animate('.sat-showcase__gauge', {
-      translateY: [10, 0],
-      opacity: [0.3, 1],
-      delay: stagger(50),
-      duration: 400,
-      ease: 'outQuad',
-    })
+    gsap.fromTo(
+      '.sat-showcase__gauge',
+      { y: 10, opacity: 0.3 },
+      { y: 0, opacity: 1, duration: 0.4, stagger: 0.05, ease: 'power2.out', overwrite: 'auto' },
+    )
   }, [activePresetIndex, reducedMotion])
 
   // Ambient auto-rotation when user isn't interacting and not scrolling heavily (rAF-driven)

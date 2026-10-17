@@ -7,15 +7,6 @@ import {
   formatIST,
 } from '../services/satelliteData'
 
-export interface ISSData {
-  latitude: number
-  longitude: number
-  altitude: number
-  velocity: number
-  visibility: string
-  timestamp: number
-}
-
 export interface AlertLogItem {
   id: string
   timestamp: string
@@ -34,6 +25,9 @@ export interface SatelliteCatalogStats {
   lastSyncTime: string
 }
 
+/** Outcome of one catalog sync attempt (drives the provider's retry loop). */
+export type CatalogSyncStatus = 'ONLINE' | 'CACHE' | 'SEED' | 'STALE'
+
 const SatelliteStatsContext = createContext<SatelliteCatalogStats | null>(null)
 
 interface SatelliteContextType {
@@ -46,7 +40,6 @@ interface SatelliteContextType {
   filterRegime: 'ALL' | 'ISRO' | 'DEBRIS' | 'LEO' | 'MEO' | 'GEO'
   setFilterRegime: (r: 'ALL' | 'ISRO' | 'DEBRIS' | 'LEO' | 'MEO' | 'GEO') => void
   filteredSatellites: SatelliteItem[]
-  issData: ISSData | null
   alerts: AlertLogItem[]
   addAlert: (message: string, category?: AlertLogItem['category'], severity?: AlertLogItem['severity']) => void
   selectSatelliteById: (id: string) => void
@@ -56,7 +49,7 @@ interface SatelliteContextType {
   triggerResetView: () => void
   apiStatus: 'ONLINE' | 'SYNCING' | 'STANDBY'
   lastSyncTime: string
-  refreshData: () => Promise<void>
+  refreshData: () => Promise<CatalogSyncStatus>
   /** Mission sim time (ms epoch) — satellites propagate at this instant, not wall clock. */
   simTime: number
   /** Sim-time rate multiplier: 1 = live, 0 = paused, 10 / 60 = fast-forward. */
@@ -125,7 +118,6 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const requestRef = useRef(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterRegime, setFilterRegime] = useState<'ALL' | 'ISRO' | 'DEBRIS' | 'LEO' | 'MEO' | 'GEO'>('ALL')
-  const [issData] = useState<ISSData | null>(null)
   const [alerts, setAlerts] = useState<AlertLogItem[]>(INITIAL_ALERTS)
   const [tick, setTick] = useState(() => Date.now())
 
@@ -153,24 +145,49 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setResetViewTrigger((t) => t + 1)
   }, [])
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (): Promise<CatalogSyncStatus> => {
     const request = ++requestRef.current
     try {
       const live = await fetchLiveCelesTrak()
-      if (request !== requestRef.current) return
+      if (request !== requestRef.current) return 'STALE'
       setRawCatalog(live.items)
       setDataSource(live.status === 'ONLINE' ? 'celestrak' : live.status === 'CACHE' ? 'cached' : 'seed')
       setApiStatus(live.status === 'ONLINE' ? 'ONLINE' : 'STANDBY')
       setLastSyncTime(live.fetchedAt ? `${formatIST(new Date(live.fetchedAt))} IST${live.status === 'CACHE' ? ' / CACHED' : ''}` : 'DEMO ELEMENTS')
+      return live.status
     } catch {
       if (request === requestRef.current) setApiStatus('STANDBY')
+      return 'SEED'
     }
   }, [])
 
+  // Sync the live catalog on mount, then keep retrying with exponential
+  // backoff while the network path is degraded (CelesTrak frequently answers
+  // 403 to browser-origin calls): 5 min base, doubling up to a 30 min ceiling.
+  // A successful ONLINE sync resets the cadence; the cached/seed fallbacks
+  // keep the cockpit populated in between. Retries stay sparse on purpose —
+  // each failed attempt still surfaces as a network entry in devtools (#4).
   useEffect(() => {
     const req = requestRef
-    void loadData()
-    return () => { req.current++ }
+    let disposed = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let failures = 0
+    const sync = async () => {
+      const status = await loadData()
+      if (disposed || status === 'STALE') return
+      if (status === 'ONLINE') {
+        failures = 0
+        return
+      }
+      failures += 1
+      timer = setTimeout(sync, Math.min(5 * 60_000 * 2 ** (failures - 1), 30 * 60_000))
+    }
+    void sync()
+    return () => {
+      disposed = true
+      if (timer) clearTimeout(timer)
+      req.current++
+    }
   }, [loadData])
 
   // Propagate all satellites every 1.5 seconds using satellite.js SGP4 — at sim time.
@@ -292,7 +309,6 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       filterRegime,
       setFilterRegime,
       filteredSatellites,
-      issData,
       alerts,
       addAlert,
       selectSatelliteById,
@@ -318,7 +334,6 @@ export const SatelliteProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       searchQuery,
       filterRegime,
       filteredSatellites,
-      issData,
       alerts,
       addAlert,
       selectSatelliteById,

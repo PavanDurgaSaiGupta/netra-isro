@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import HudIcon from '../HudIcon'
 
 /**
  * Radar-first navigation — the sidebar as a live polar instrument.
  *
  - `.radar-nav__scope` holds an SVG graticule (range rings + crosshairs), a rotating
-   conic sweep (4s linear infinite, CSS) and the six routes plotted as contacts.
+   conic sweep (4s linear infinite, CSS) and the seven routes plotted as contacts.
  - Each contact carries `--sweep-delay` (= angle / 360 × 4s) so its CSS pulse fires
    exactly when the sweep crosses it. The sweep must start pointing north and rotate
    clockwise for that sync to hold.
@@ -32,6 +33,7 @@ const NAV_CONTACTS: NavContact[] = [
   { to: '/debris', label: 'DEBRIS', subtitle: 'CONJUNCTION & KESSLER', angle: 188, radius: 0.93 },
   { to: '/alerts', label: 'ALERTS', subtitle: 'DSSAM EVENT STREAM', angle: 246, radius: 0.6 },
   { to: '/about', label: 'ABOUT', subtitle: 'ISRO DSSAM MANDATE', angle: 304, radius: 0.78 },
+  { to: '/guide', label: 'GUIDE', subtitle: 'OPERATOR FLIGHT MANUAL', angle: 336, radius: 0.66 },
 ]
 
 const SWEEP_PERIOD_S = 4
@@ -99,7 +101,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           onClick={onCloseMobile}
           aria-label="Close navigation menu"
         >
-          ✕
+          <HudIcon name="close" />
         </button>
 
         {/* Polar scope */}

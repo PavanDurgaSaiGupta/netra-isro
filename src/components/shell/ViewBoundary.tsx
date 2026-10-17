@@ -30,7 +30,16 @@ export default class ViewBoundary extends Component<ViewBoundaryProps, ViewBound
         <div className="view-error" role="alert">
           <span className="hud-text view-error__code">SIGNAL LOST — VIEW CRASHED</span>
           <p className="view-error__detail">{this.state.error.message}</p>
-          <button className="view-error__retry" onClick={() => this.setState({ error: null })}>
+          <button
+            className="view-error__retry"
+            onClick={() => {
+              // A plain remount re-renders inside the already-loaded module
+              // graph — stale after hot-swapped dev modules or old hashed
+              // chunks. Only a full reload rebuilds a consistent graph, so
+              // the retry path performs one.
+              window.location.reload()
+            }}
+          >
             RETRY UPLINK
           </button>
         </div>

@@ -17,6 +17,7 @@ import {
 import GroundStationBeam from './orbit/GroundStationBeam'
 import { Earth, EarthFallback } from './orbit/Earth'
 import SatelliteMarker from './orbit/SatelliteMarker'
+import { LabelDeconflict } from './orbit/LabelDeconflict'
 import CameraController from './orbit/CameraController'
 import { useAdaptiveRendering, isWebGLAvailable } from '../lib/adaptiveRendering'
 
@@ -300,7 +301,8 @@ function ConstellationLens({
 
 export default function OrbitScene() {
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
-  const { filteredSatellites, selectedSat, setSelectedSat, recenterTrigger, resetViewTrigger } = useSatellites()
+  const { filteredSatellites, selectedSat, setSelectedSat, triggerRecenter, recenterTrigger, resetViewTrigger } =
+    useSatellites()
   const { profile } = useAdaptiveRendering()
   const prefersReduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const [autoRotate, setAutoRotate] = useState(() => !prefersReduced)
@@ -369,7 +371,11 @@ export default function OrbitScene() {
             boxSizing: 'border-box',
           }}
         >
-          <div style={{ fontSize: 36, marginBottom: 12 }}>🛰️</div>
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#ff6b1a" strokeWidth="1.4" style={{ marginBottom: 12 }} aria-hidden="true">
+            <circle cx="12" cy="12" r="4.4" />
+            <ellipse cx="12" cy="12" rx="10" ry="4.6" transform="rotate(-24 12 12)" strokeOpacity="0.5" />
+            <circle cx="20.6" cy="11" r="1.15" fill="#ff6b1a" stroke="none" />
+          </svg>
           <div
             style={{
               fontFamily: 'ui-monospace, SFMono-Regular, monospace',
@@ -419,8 +425,19 @@ export default function OrbitScene() {
           <OrbitPlanes />
           {constellations && <ConstellationPoints activeGroups={activeGroups} groups={constellations} />}
           {filteredSatellites.map((sat) => (
-            <SatelliteMarker key={sat.id} sat={sat} isSelected={selectedSat?.id === sat.id} onSelect={() => setSelectedSat(sat)} />
+            <SatelliteMarker
+              key={sat.id}
+              sat={sat}
+              isSelected={selectedSat?.id === sat.id}
+              onSelect={() => {
+                if (selectedSat?.id === sat.id) triggerRecenter()
+                else setSelectedSat(sat)
+              }}
+              labelsMode={profile.tier === 'LOW' ? 'selected' : 'all'}
+            />
           ))}
+          {/* #2: resolves label chip collisions after all markers ran their frame */}
+          <LabelDeconflict />
         </Suspense>
         <OrbitControls
           ref={controlsRef}

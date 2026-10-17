@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export type DeviceTier = 'HIGH' | 'MEDIUM' | 'LOW'
 
@@ -62,25 +62,115 @@ export function detectDeviceProfile(): QualityProfile {
   return HIGH_PROFILE
 }
 
+const TIER_RANK: Record<DeviceTier, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 }
+const PROFILE_BY_RANK: QualityProfile[] = [LOW_PROFILE, MEDIUM_PROFILE, HIGH_PROFILE]
+const FPS_SAMPLE_MS = 1000
+const FPS_FLOOR = 42
+const FPS_STRIKES = 2
+const FPS_RECOVER = 56
+const RECOVER_WINDOWS = 6
+
 /**
  * Hook that supplies auto-adaptive rendering quality and dynamically monitors
  * device performance to prevent frame drops.
+ *
+ * The tier is detected on mount from CPU cores / memory / viewport, then a
+ * lightweight rAF watchdog demotes the profile one tier at a time whenever the
+ * measured frame rate stays below the floor for consecutive one-second
+ * samples. When a demoted profile then holds at or above the recovery
+ * threshold for a sustained stretch, the watchdog promotes it back — but never
+ * beyond the highest tier the hardware itself ever detected, so a genuinely
+ * slow device cannot climb past its ceiling. The FPS state update is
+ * change-gated (≥2 fps drift or a tier change) to keep consumers from
+ * re-rendering on every one-second sample.
  */
 export function useAdaptiveRendering() {
   const [profile, setProfile] = useState<QualityProfile>(detectDeviceProfile)
   const [currentFps, setCurrentFps] = useState(60)
 
-  // Dynamically listen to window resize and orientation
+  // Highest tier the hardware itself ever detected this session — the
+  // promotion ceiling. Initialized lazily from the first render's profile.
+  const capRankRef = useRef<number | null>(null)
+  if (capRankRef.current === null) capRankRef.current = TIER_RANK[profile.tier]
+
+  // Last value pushed into `currentFps`, used to gate state updates.
+  const lastFpsRef = useRef(60)
+
+  // Re-detect on resize/orientation: settle downward to the new detection and
+  // raise the promotion ceiling if a roomier layout reveals more capacity.
   useEffect(() => {
     const onResize = () => {
-      setProfile((prev) => {
-        const detected = detectDeviceProfile()
-        if (detected.tier !== prev.tier) return detected
-        return prev
-      })
+      const detected = detectDeviceProfile()
+      capRankRef.current = Math.max(capRankRef.current ?? 0, TIER_RANK[detected.tier])
+      setProfile((prev) => (TIER_RANK[detected.tier] < TIER_RANK[prev.tier] ? detected : prev))
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // FPS watchdog: one-second sampling windows. Two consecutive windows under
+  // the floor demote one tier; six consecutive windows at/above the recovery
+  // threshold promote one tier back, capped at the detected ceiling.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    let raf = 0
+    let alive = true
+    let frames = 0
+    let windowStart = performance.now()
+    let slowStrikes = 0
+    let fastStreak = 0
+
+    const tick = () => {
+      if (!alive) return
+      frames += 1
+      const now = performance.now()
+      const elapsed = now - windowStart
+      if (elapsed >= FPS_SAMPLE_MS) {
+        const fps = Math.round((frames * 1000) / elapsed)
+        frames = 0
+        windowStart = now
+
+        let tierChanged = false
+        if (fps < FPS_FLOOR) {
+          fastStreak = 0
+          slowStrikes += 1
+          if (slowStrikes >= FPS_STRIKES) {
+            slowStrikes = 0
+            tierChanged = true
+            setProfile((prev) => {
+              const nextRank = TIER_RANK[prev.tier] - 1
+              return nextRank >= 0 ? PROFILE_BY_RANK[nextRank] : prev
+            })
+          }
+        } else {
+          slowStrikes = 0
+          if (fps >= FPS_RECOVER) {
+            fastStreak += 1
+            if (fastStreak >= RECOVER_WINDOWS) {
+              fastStreak = 0
+              tierChanged = true
+              setProfile((prev) => {
+                const nextRank = Math.min(TIER_RANK[prev.tier] + 1, capRankRef.current ?? TIER_RANK[prev.tier])
+                return nextRank > TIER_RANK[prev.tier] ? PROFILE_BY_RANK[nextRank] : prev
+              })
+            }
+          } else {
+            fastStreak = 0
+          }
+        }
+
+        if (tierChanged || Math.abs(fps - lastFpsRef.current) >= 2) {
+          lastFpsRef.current = fps
+          setCurrentFps(fps)
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      alive = false
+      cancelAnimationFrame(raf)
+    }
   }, [])
 
   return {

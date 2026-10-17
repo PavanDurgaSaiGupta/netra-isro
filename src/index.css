@@ -365,6 +365,15 @@ body::after {
   background: var(--bg-void);
 }
 
+/* Immersive cockpit routes (e.g. /tracking) render a viewport-sized console:
+   the shell must never scroll, otherwise the entire HUD — including the
+   mobile control tray — slides up under the fixed top chrome and becomes
+   hidden/untappable. `clip` (not `hidden`) also blocks programmatic scrolls
+   (focus / scrollIntoView), so the console can never shift. */
+.app-shell__viewport--immersive {
+  overflow: clip;
+}
+
 .app-shell__scroll-content {
   min-height: 100%;
 }
@@ -1543,6 +1552,9 @@ body::after {
   letter-spacing: 0.06em;
   padding: 4px 8px;
   border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -1558,6 +1570,42 @@ body::after {
   background: rgba(0, 240, 255, 0.15);
   border-color: var(--accent-cyan);
   color: var(--accent-cyan);
+}
+
+/* Inline HUD icons (replace unicode glyphs across the cockpit HUD) */
+.hud-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.14em;
+  flex-shrink: 0;
+}
+.tracking-view__search-icon svg,
+.catalog-view__search-icon svg,
+.sat-drawer__close-btn svg,
+.radar-nav__close svg {
+  display: block;
+}
+.tracking-view__panel-mobile-header > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.earth-confirm-modal__close-btn svg {
+  display: block;
+}
+.earth-confirm-modal__check-icon svg {
+  display: block;
+}
+.earth-confirm-modal__meta-dot::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #34d399;
+  margin-right: 6px;
+  vertical-align: 1px;
 }
 
 .tracking-view__mobile-backdrop {
@@ -1676,65 +1724,72 @@ body::after {
   pointer-events: none;
 }
 
+/* Marker label chips — HUD telemetry captions anchored beside each marker.
+   Unselected chips stay deliberately quiet (dim text, hairline border) so a
+   labels-on-everything view reads as symbology rather than sticker noise;
+   only hover/selected treatments pull focus. */
 .sat-zoom-label {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: rgba(3, 6, 12, 0.86);
+  background: rgba(4, 8, 15, 0.85);
   border: 1px solid var(--line-hairline-strong);
-  padding: 1.5px 5px;
-  border-radius: 2px;
+  color: rgba(233, 240, 248, 0.78);
   font-family: var(--font-mono);
-  font-size: 7.5px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.9);
+  font-size: 8.5px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 2px;
   white-space: nowrap;
-  letter-spacing: 0.06em;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+  box-shadow: 0 2px 8px rgba(2, 5, 10, 0.8);
   transform-origin: left center;
   transition:
     border-color var(--dur-instant) var(--ease-standard),
     background var(--dur-instant) var(--ease-standard),
     color var(--dur-instant) var(--ease-standard),
     box-shadow var(--dur-instant) var(--ease-standard);
+  -webkit-font-smoothing: antialiased;
   user-select: none;
   pointer-events: auto;
   cursor: pointer;
 }
 
 .sat-zoom-label__dot {
-  width: 3.5px;
-  height: 3.5px;
-  border-radius: 50%;
+  width: 4px;
+  height: 4px;
   flex: none;
 }
 
 .sat-zoom-label__name {
   line-height: 1.2;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
 }
 
 .sat-zoom-label:hover {
-  border-color: var(--accent-cyan);
-  background: rgba(0, 240, 255, 0.2);
+  border-color: rgba(0, 240, 255, 0.7);
+  background: rgba(6, 22, 30, 0.92);
   color: var(--text-primary);
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3), 0 2px 10px rgba(0, 0, 0, 0.8);
 }
 
 /* Declared after :hover so a locked label keeps its treatment */
 .sat-zoom-label--hovered,
 .sat-zoom-label--hovered:hover {
-  border-color: rgba(255, 255, 255, 0.7);
-  background: rgba(8, 14, 22, 0.95);
+  border-color: rgba(255, 255, 255, 0.65);
+  background: rgba(10, 16, 24, 0.95);
   color: var(--text-primary);
 }
 
+/* Selected chip steps a size up and takes the cyan lock treatment */
 .sat-zoom-label--selected,
 .sat-zoom-label--selected:hover {
+  font-size: 9px;
   border-color: var(--accent-cyan);
-  background: rgba(0, 240, 255, 0.25);
+  background: rgba(3, 20, 26, 0.92);
   color: var(--accent-cyan);
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.65);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.45), 0 2px 10px rgba(0, 0, 0, 0.85);
 }
 
 /* ============================================================
@@ -2718,6 +2773,24 @@ body::after {
   z-index: 120;
   box-shadow: -15px 0 50px rgba(0, 0, 0, 0.85);
   overflow-y: auto;
+  /* Slide position is owned by React state (satellite selection), not by GSAP
+     tweens: a StrictMode double-mount + context.revert() left GSAP-translated
+     px residue (x:105%·width) that a fromTo on xPercent alone could never clear,
+     freezing the panel off-screen in dev. CSS handles the slide on the
+     --open modifier; GSAP only restages the dossier groups inside. */
+  transform: translateX(105%);
+  transition: transform var(--dur-base) var(--ease-entrance);
+  will-change: transform;
+}
+
+.sat-drawer--open {
+  transform: translateX(0%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sat-drawer {
+    transition: none;
+  }
 }
 
 .sat-drawer__inner {
@@ -6559,13 +6632,21 @@ body::after {
   inset: 0;
   z-index: 120;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 16px;
+  /* The card can exceed the modal's containing block on short/mobile screens;
+     scroll inside the modal instead of letting the shell viewport scroll
+     (which would shift the whole cockpit under the top chrome). */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .earth-confirm-modal__backdrop {
-  position: absolute;
+  /* Fixed (not absolute) so the dimmer stays covering the modal's containing
+     block even while the modal body itself is scrolled. */
+  position: fixed;
   inset: 0;
   background: rgba(4, 7, 12, 0.88);
   backdrop-filter: blur(12px);
@@ -6578,6 +6659,9 @@ body::after {
   z-index: 2;
   width: 100%;
   max-width: 620px;
+  /* Safe centering: auto margins center the card when it fits, and align it
+     to the top (instead of clipping it) when it overflows the modal. */
+  margin: auto;
   background: rgba(8, 14, 23, 0.96);
   border: 1px solid rgba(0, 240, 255, 0.3);
   box-shadow:

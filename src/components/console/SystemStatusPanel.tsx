@@ -65,7 +65,7 @@ export default function SystemStatusPanel() {
     setTimeout(() => {
       setSubsystems((prev) =>
         prev.map((sub) =>
-          sub.id === id ? { ...sub, status: 'nominal', statusText: 'VERIFIED ✓' } : sub
+          sub.id === id ? { ...sub, status: 'nominal', statusText: 'VERIFIED' } : sub
         )
       )
     }, 1200)

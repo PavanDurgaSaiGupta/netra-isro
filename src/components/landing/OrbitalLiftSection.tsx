@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { animate, stagger } from 'animejs'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { gsap, prefersReducedMotion } from '../../lib/motion'
 
@@ -88,20 +87,29 @@ export default function OrbitalLiftSection() {
       start: 'top 78%',
       once: true,
       onEnter: () => {
-        animate('.orbital-lift__level', {
-          translateX: [-20, 0],
-          opacity: [0, 1],
-          delay: stagger(80),
-          duration: 650,
-          ease: 'outCubic',
-        })
+        gsap.fromTo(
+          '.orbital-lift__level',
+          { x: -20, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.65, stagger: 0.08, ease: 'power3.out', overwrite: 'auto' },
+        )
 
-        animate('.orbital-lift__level-fill', {
-          scaleX: [0, 1],
-          delay: stagger(80, { start: 200 }),
-          duration: 800,
-          ease: 'outExpo',
-        })
+        // The fill's resting state lives in CSS (translateX(-100%) hidden →
+        // `.is-selected` reveals it) — clear the inline transform when the sweep
+        // finishes so the CSS selection pattern regains control. (The anime.js
+        // version left inline styles behind and froze every bar visible.)
+        gsap.fromTo(
+          '.orbital-lift__level-fill',
+          { scaleX: 0 },
+          {
+            scaleX: 1,
+            duration: 0.8,
+            delay: 0.2,
+            stagger: 0.08,
+            ease: 'expo.out',
+            clearProps: 'transform',
+            overwrite: 'auto',
+          },
+        )
       },
     })
 
@@ -112,12 +120,11 @@ export default function OrbitalLiftSection() {
 
   useEffect(() => {
     if (reducedMotion) return
-    animate('.orbital-lift__intel-deck', {
-      translateY: [12, 0],
-      opacity: [0.5, 1],
-      duration: 350,
-      ease: 'outQuad',
-    })
+    gsap.fromTo(
+      '.orbital-lift__intel-deck',
+      { y: 12, opacity: 0.5 },
+      { y: 0, opacity: 1, duration: 0.35, ease: 'power2.out', overwrite: 'auto' },
+    )
   }, [selectedLayer, reducedMotion])
 
   return (

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useSatellites, type AlertLogItem } from '../context/SatelliteContext'
 import AlertsFeed from '../components/console/AlertsFeed'
+import HudIcon from '../components/HudIcon'
 import { DUR, EASE, gsap, prefersReducedMotion, useGSAP } from '../lib/motion'
 
 type CategoryFilter = 'ALL' | AlertLogItem['category']
@@ -135,14 +136,22 @@ export default function AlertsView() {
 
         <div className="alerts-view__actions hud-text">
           <button className="alerts-view__sim-btn u-link" onClick={handleSimulateAlert}>
-            ⚡ INITIATE SENSOR DRILL ALERT
+            <HudIcon name="telemetry" /> INITIATE SENSOR DRILL ALERT
           </button>
           <button
             className="btn-secondary hud-text"
             style={{ padding: '6px 14px', fontSize: '9.5px', marginLeft: '12px' }}
             onClick={handleExportLogs}
           >
-            {downloadSuccess ? '✓ LOGS EXPORTED' : '📥 EXPORT AUDIT LOG (.JSON)'}
+            {downloadSuccess ? (
+              <>
+                <HudIcon name="check" /> LOGS EXPORTED
+              </>
+            ) : (
+              <>
+                <HudIcon name="download" /> EXPORT AUDIT LOG (.JSON)
+              </>
+            )}
           </button>
         </div>
       </div>

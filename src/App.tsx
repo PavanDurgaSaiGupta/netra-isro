@@ -20,6 +20,7 @@ const SatelliteCatalogView = lazy(() => import('./views/SatelliteCatalogView'))
 const DebrisAnalysisView = lazy(() => import('./views/DebrisAnalysisView'))
 const AlertsView = lazy(() => import('./views/AlertsView'))
 const AboutView = lazy(() => import('./views/AboutView'))
+const InstructionsView = lazy(() => import('./views/InstructionsView'))
 
 /**
  * Page transition (contract §4): the outgoing view drifts up then slides out along a
@@ -97,7 +98,7 @@ function PageTransition({
   )
 }
 
-const CONTENT_ROUTES = new Set(['/', '/overview', '/about'])
+const CONTENT_ROUTES = new Set(['/', '/overview', '/about', '/guide'])
 
 function AppShell() {
   const location = useLocation()
@@ -106,6 +107,9 @@ function AppShell() {
   const scrollContentRef = useRef<HTMLDivElement | null>(null)
   const lenisRef = useRef<Lenis | null>(null)
   const isSmoothRoute = CONTENT_ROUTES.has(location.pathname)
+  // Immersive cockpit routes are viewport-sized consoles; the shell viewport is
+  // locked so nothing can scroll the whole HUD under the fixed top chrome.
+  const isImmersiveRoute = location.pathname === '/tracking'
 
   // T04: Lenis smooth scroll on content routes only (landing, about); the scroll container
   // is .app-shell__viewport, so it is passed as the Lenis wrapper.
@@ -140,6 +144,43 @@ function AppShell() {
     }
   }, [isSmoothRoute])
 
+  // Prefetch-on-intent for the heaviest route (code-split per #9): warm both the
+  // tracking view chunk and the 3D scene chunk the moment a pointer, keyboard or
+  // touch user shows intent on a tracking link, so route entry paints instantly.
+  useEffect(() => {
+    let warmed = false
+    const warm = () => {
+      if (warmed) return
+      warmed = true
+      void import('./views/LiveTrackingView')
+      void import('./components/OrbitScene')
+    }
+    const isTrackingLink = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return false
+      const anchor = target.closest('a[href]')
+      if (!anchor) return false
+      const href = anchor.getAttribute('href') ?? ''
+      return href.replace(/\/+$/, '').endsWith('/tracking')
+    }
+    const onPointerOver = (e: PointerEvent) => {
+      if (isTrackingLink(e.target)) warm()
+    }
+    const onFocusIn = (e: FocusEvent) => {
+      if (isTrackingLink(e.target)) warm()
+    }
+    const onTouchStart = (e: TouchEvent) => {
+      if (isTrackingLink(e.target)) warm()
+    }
+    document.addEventListener('pointerover', onPointerOver, { passive: true })
+    document.addEventListener('focusin', onFocusIn)
+    document.addEventListener('touchstart', onTouchStart, { passive: true })
+    return () => {
+      document.removeEventListener('pointerover', onPointerOver)
+      document.removeEventListener('focusin', onFocusIn)
+      document.removeEventListener('touchstart', onTouchStart)
+    }
+  }, [])
+
   const resetScroll = useCallback(() => {
     if (lenisRef.current) {
       lenisRef.current.scrollTo(0, { immediate: true, force: true })
@@ -161,7 +202,12 @@ function AppShell() {
           onToggleMobileMenu={() => setMobileMenuOpen((o) => !o)}
         />
         <SSATicker />
-        <main className="app-shell__viewport" id="main-content" tabIndex={-1} ref={viewportRef}>
+        <main
+          className={`app-shell__viewport${isImmersiveRoute ? ' app-shell__viewport--immersive' : ''}`}
+          id="main-content"
+          tabIndex={-1}
+          ref={viewportRef}
+        >
           {/* Stable scroll-content node for Lenis; the keyed transition div lives inside */}
           <div className="app-shell__scroll-content" ref={scrollContentRef}>
             <PageTransition onSwapped={resetScroll}>
@@ -182,6 +228,7 @@ function AppShell() {
                       <Route path="/debris" element={<DebrisAnalysisView />} />
                       <Route path="/alerts" element={<AlertsView />} />
                       <Route path="/about" element={<AboutView />} />
+                      <Route path="/guide" element={<InstructionsView />} />
                       <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                   </Suspense>

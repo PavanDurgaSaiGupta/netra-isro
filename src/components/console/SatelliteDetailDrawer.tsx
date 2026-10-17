@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { DUR, EASE, gsap, prefersReducedMotion, stagger, useGSAP } from '../../lib/motion'
 import { useSatellites } from '../../context/SatelliteContext'
 import OdometerNumber from '../shell/OdometerNumber'
+import HudIcon from '../HudIcon'
 import { fetchTransmitters, type RadioTransmitter } from '../../services/satnogs'
 import type { SatelliteItem } from '../../services/satelliteData'
 import {
@@ -24,12 +25,15 @@ const RISK_LEVELS: Record<SatelliteItem['conjunctionRisk'], { label: string; wid
   CRITICAL: { label: 'CRITICAL (SCREENED)', width: '82%', color: 'var(--status-critical)' },
 }
 
+/** Panel exit slide length — mirrors the CSS transition on .sat-drawer
+ *  (--dur-fast); content is decomposed after the panel is fully off-screen. */
+const EXIT_SLIDE_MS = 240
+
 export default function SatelliteDetailDrawer() {
   const { selectedSat, satellites, setSelectedSat, triggerRecenter, triggerResetView } = useSatellites()
   const drawerRef = useRef<HTMLElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const selectedId = selectedSat?.id ?? null
-  const isOpen = selectedId !== null
   const [displaySat, setDisplaySat] = useState<SatelliteItem | null>(selectedSat)
 
   // RF profile — SatNOGS DB (fetched once per 24 h service-side cache, filtered per object)
@@ -84,43 +88,24 @@ export default function SatelliteDetailDrawer() {
     return () => clearInterval(id)
   }, [lastLosMs])
 
-  // Drawer open / close slide — keyed on the OPEN STATE, not the per-tick object
-  // identity from the context (which re-ran the entrance tween every 1.5 s: visible
-  // flicker) and not the id (which would re-slide the whole panel on every switch).
-  // Selection changes are handled by the restage effect below.
-  useGSAP(
-    () => {
-      const root = drawerRef.current
-      if (!root) return
-      if (selectedSat) {
-        setDisplaySat(selectedSat)
-        if (prefersReducedMotion()) {
-          gsap.set(root, { xPercent: 0 })
-        } else {
-          gsap.fromTo(
-            root,
-            { xPercent: 105 },
-            { xPercent: 0, duration: DUR.base, ease: EASE.entrance, overwrite: 'auto' },
-          )
-        }
-        return
-      }
-      if (!displaySat) return
-      if (prefersReducedMotion()) {
-        gsap.set(root, { xPercent: 105 })
-        setDisplaySat(null)
-        return
-      }
-      gsap.to(root, {
-        xPercent: 105,
-        duration: DUR.fast,
-        ease: EASE.exit,
-        overwrite: 'auto',
-        onComplete: () => setDisplaySat(null),
-      })
-    },
-    { scope: drawerRef, dependencies: [isOpen] },
-  )
+  // Drawer open / close slide — owned by REACT STATE + CSS (the token system's
+  // --open modifier), NOT by GSAP tweens: in dev, StrictMode double-mounts the
+  // hook and @gsap/react's context.revert() rewrites the panel's position into
+  // GSAP px space; a fromTo on xPercent alone then animates the percent part
+  // while the stale px chip holds the panel off-screen forever. The CSS slide
+  // is driven purely by whether content is composed; GSAP keeps only the
+  // dossier-group restage below.
+  // Content availability (displaySat) lingers through the 240ms exit slide so
+  // the panel does not blank while it is still moving.
+  useEffect(() => {
+    if (selectedSat) {
+      setDisplaySat(selectedSat)
+      return
+    }
+    if (!displaySat) return
+    const id = window.setTimeout(() => setDisplaySat(null), EXIT_SLIDE_MS)
+    return () => window.clearTimeout(id)
+  }, [selectedSat, displaySat])
 
   // Dossier restage — the three dossier groups slide in with the 60ms stagger on
   // every selection change. Keyed on the stable id (the flicker fix). The body
@@ -171,7 +156,7 @@ export default function SatelliteDetailDrawer() {
 
   if (!sat) {
     return (
-      <aside className="sat-drawer" ref={drawerRef} style={{ transform: 'translateX(105%)' }} aria-hidden="true" />
+      <aside className="sat-drawer" ref={drawerRef} aria-hidden="true" />
     )
   }
 
@@ -195,9 +180,8 @@ export default function SatelliteDetailDrawer() {
 
   return (
     <aside
-      className="sat-drawer"
+      className="sat-drawer sat-drawer--open"
       ref={drawerRef}
-      style={{ transform: 'translateX(105%)' }}
       aria-label="Satellite Detailed Telemetry Drawer"
     >
       <div className="sat-drawer__inner">
@@ -244,7 +228,7 @@ export default function SatelliteDetailDrawer() {
             aria-label="Close telemetry drawer"
             title="Close Drawer (ESC)"
           >
-            ✕
+            <HudIcon name="close" />
           </button>
         </div>
 
@@ -483,7 +467,7 @@ export default function SatelliteDetailDrawer() {
                 }}
                 title="Fly camera to focus closely on this object in 3D"
               >
-                ⊙ RECENTER SATELLITE
+                <HudIcon name="center" /> RECENTER SATELLITE
               </button>
               <button
                 type="button"

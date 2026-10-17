@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { prefersReducedMotion } from '../lib/motion'
 
 export default function TacticalCursor() {
   const cursorRef = useRef<HTMLDivElement>(null)
@@ -18,6 +19,9 @@ export default function TacticalCursor() {
     const lockEl = lockBadgeRef.current
     if (!cursor) return
 
+    // Reduced motion: the reticle locks straight onto the pointer — the lerp
+    // trail is pure decoration, so it is skipped entirely (factor 1 = snap).
+    const follow = prefersReducedMotion() ? 1 : 0.4
     let mouseX = window.innerWidth / 2
     let mouseY = window.innerHeight / 2
     let curX = mouseX
@@ -85,8 +89,8 @@ export default function TacticalCursor() {
 
     const tick = () => {
       // Smooth interpolation for trailing reticle brackets
-      curX += (mouseX - curX) * 0.4
-      curY += (mouseY - curY) * 0.4
+      curX += (mouseX - curX) * follow
+      curY += (mouseY - curY) * follow
       cursor.style.transform = `translate3d(${curX}px, ${curY}px, 0)`
       rafId = requestAnimationFrame(tick)
     }

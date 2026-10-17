@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import DebrisGrowthChart from '../components/DebrisGrowthChart'
 import MissionStats from '../components/MissionStats'
+import HudIcon from '../components/HudIcon'
 import { DUR, EASE, gsap, prefersReducedMotion, stagger, useGSAP } from '../lib/motion'
 
 interface ConjunctionPair {
@@ -207,7 +208,7 @@ export default function DebrisAnalysisView() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {copiedNotification && (
               <span className="hud-text" style={{ color: 'var(--status-active)', fontSize: '9px' }}>
-                ✓ REPORT DOWNLOADED
+                <HudIcon name="check" /> REPORT DOWNLOADED
               </span>
             )}
             <button

@@ -3,6 +3,13 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { gsap } from '../../lib/motion'
+import {
+  closestChordDistance,
+  computeBulge,
+  computeMissHeight,
+  computeStandoff,
+  flightDuration,
+} from '../../lib/cameraFlight'
 import type { SatelliteItem } from '../../services/satelliteData'
 
 // Scratch vector — the follow loop runs every frame; never allocate inside useFrame
@@ -42,6 +49,15 @@ export default function CameraController({
   useEffect(() => {
     const ctrl = controlsRef.current
     if (!ctrl) return
+    // Dev-only camera inspector so headless probes can assert framing (#11):
+    // reading three internals from outside the canvas is otherwise impossible.
+    // DEV-bundled only — import.meta.env.DEV is false in production builds.
+    if (import.meta.env.DEV) {
+      ;(window as unknown as Record<string, unknown>).__NETRA_CAM = () => ({
+        cam: camera.position.toArray(),
+        tgt: ctrl.target.toArray(),
+      })
+    }
     const handleStart = () => {
       isUserDraggingRef.current = true
       isFollowingRef.current = false
@@ -76,28 +92,44 @@ export default function CameraController({
     }
     const ctrl = controlsRef.current
     const targetPos = new THREE.Vector3(...selectedSat.pos3D)
+    // Mostly-radial vantage with a small tilt so the Earth's limb stays in
+    // frame; the camera parks at a fixed radius from the Earth's centre so
+    // the globe keeps its proportions while the satellite sits centred (#11).
+    const orbitR = targetPos.length()
+    // Scalar framing/flight math lives in lib/cameraFlight (unit-tested pure).
+    const standoff = computeStandoff(orbitR)
     const radial = targetPos.clone().normalize()
-    const targetCam = targetPos.clone().add(radial.multiplyScalar(0.75)).add(new THREE.Vector3(0.2, 0.22, 0.18))
-    const animProxy = {
-      cx: camera.position.x,
-      cy: camera.position.y,
-      cz: camera.position.z,
-      tx: ctrl.target.x,
-      ty: ctrl.target.y,
-      tz: ctrl.target.z,
-    }
-    activeTweenRef.current = gsap.to(animProxy, {
-      cx: targetCam.x,
-      cy: targetCam.y,
-      cz: targetCam.z,
-      tx: targetPos.x,
-      ty: targetPos.y,
-      tz: targetPos.z,
-      duration: prefersReducedMotion() ? 0 : 1.2,
+    const offsetDir = radial.add(new THREE.Vector3(0.12, 0.14, 0.12)).normalize()
+    const targetCam = targetPos.clone().addScaledVector(offsetDir, standoff)
+
+    // Flight path: a slight arc bowed away from the Earth's centre, so every
+    // approach reads as a pass around the target rather than a straight charge
+    // across the globe's face — and so a chord that would otherwise clip the
+    // planet (target on the far side) clears the surface with margin.
+    const startCam = camera.position.clone()
+    const startTgt = ctrl.target.clone()
+    const pathLen = startCam.distanceTo(targetCam)
+    // Chord clearance from the Earth's surface + parabolic arc bulge — pure
+    // helpers from lib/cameraFlight (see regression.test.mjs for the maths).
+    const straightClear = closestChordDistance(startCam.toArray(), targetCam.toArray())
+    const missHeight = computeMissHeight(straightClear)
+    const bulge = computeBulge(pathLen, missHeight)
+    const midDir = startCam.clone().lerp(targetCam, 0.5)
+    if (midDir.lengthSq() < 1e-9) midDir.set(0, 1, 0)
+    midDir.normalize()
+
+    const flight = { t: 0 }
+    activeTweenRef.current = gsap.to(flight, {
+      t: 1,
+      duration: prefersReducedMotion() ? 0 : flightDuration(pathLen),
       ease: 'power3.inOut',
       onUpdate: () => {
-        camera.position.set(animProxy.cx, animProxy.cy, animProxy.cz)
-        ctrl.target.set(animProxy.tx, animProxy.ty, animProxy.tz)
+        const e = flight.t
+        camera.position
+          .copy(startCam)
+          .lerp(targetCam, e)
+          .addScaledVector(midDir, Math.sin(Math.PI * e) * bulge)
+        ctrl.target.copy(startTgt).lerp(targetPos, e)
         ctrl.update()
       },
       onComplete: () => {

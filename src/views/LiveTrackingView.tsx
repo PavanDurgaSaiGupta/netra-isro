@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { useSatellites } from '../context/SatelliteContext'
-import OrbitScene from '../components/OrbitScene'
 import WebGLErrorBoundary from '../components/WebGLErrorBoundary'
 import SystemStatusPanel from '../components/console/SystemStatusPanel'
 import TelemetryReadout from '../components/console/TelemetryReadout'
@@ -9,8 +8,13 @@ import OverheadRadar from '../components/OverheadRadar'
 import TimeControls from '../components/console/TimeControls'
 import LiveDateline from '../components/console/LiveDateline'
 import EarthLoadingConfirmation from '../components/console/EarthLoadingConfirmation'
+import HudIcon from '../components/HudIcon'
 import { useAdaptiveRendering } from '../lib/adaptiveRendering'
 import type { SatelliteItem } from '../services/satelliteData'
+
+// The 3D scene (three.js + drei) is by far the heaviest dependency — split it
+// out so the HUD chrome, confirm modal and drawers paint before WebGL streams.
+const OrbitScene = lazy(() => import('../components/OrbitScene'))
 
 const REGIMES = ['ALL', 'ISRO', 'DEBRIS', 'LEO', 'GEO'] as const
 
@@ -26,6 +30,7 @@ export default function LiveTrackingView() {
     satellites,
     selectedSat,
     setSelectedSat,
+    triggerRecenter,
     triggerResetView,
     apiStatus,
     lastSyncTime,
@@ -40,9 +45,23 @@ export default function LiveTrackingView() {
     return sessionStorage.getItem('netra_earth_confirmed') !== 'true'
   })
 
+  // Dismissing the verification HUD must leave the shell viewport at its top
+  // edge: a residual programmatic scroll (focus / scrollIntoView) would shift
+  // the whole cockpit, sliding the control tray under the fixed top chrome.
+  const resetShellScroll = () => {
+    const viewport = document.querySelector<HTMLElement>('.app-shell__viewport')
+    viewport?.scrollTo({ top: 0 })
+  }
+
   const handleConfirmEarth = () => {
     sessionStorage.setItem('netra_earth_confirmed', 'true')
     setShowConfirmModal(false)
+    resetShellScroll()
+  }
+
+  const handleCloseConfirm = () => {
+    setShowConfirmModal(false)
+    resetShellScroll()
   }
 
   // Detect small screens on resize
@@ -54,9 +73,11 @@ export default function LiveTrackingView() {
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  // Handle clicking or pressing Enter on a search result
+  // Handle clicking or pressing Enter on a search result. Re-selecting the
+  // already-tracked satellite replays the camera fly-to instead of no-oping.
   const handleSelectSatellite = (sat: SatelliteItem) => {
-    setSelectedSat(sat)
+    if (selectedSat?.id === sat.id) triggerRecenter()
+    else setSelectedSat(sat)
     if (isMobile) {
       setMobilePanel('none')
     }
@@ -98,7 +119,9 @@ export default function LiveTrackingView() {
       {/* 3D Orbit Scene fills the entire background workspace with Centered Earth */}
       <div className="tracking-view__scene-container">
         <WebGLErrorBoundary>
-          <OrbitScene />
+          <Suspense fallback={null}>
+            <OrbitScene />
+          </Suspense>
         </WebGLErrorBoundary>
       </div>
 
@@ -119,7 +142,7 @@ export default function LiveTrackingView() {
           onClick={() => toggleMobilePanel('search')}
           title="Toggle Search & Filters"
         >
-          ⌕ SEARCH
+          <HudIcon name="search" /> SEARCH
         </button>
         <button
           type="button"
@@ -127,7 +150,7 @@ export default function LiveTrackingView() {
           onClick={() => toggleMobilePanel('telemetry')}
           title="Toggle Telemetry Panel"
         >
-          ⚡ TELEMETRY
+          <HudIcon name="telemetry" /> TELEMETRY
         </button>
         <button
           type="button"
@@ -135,7 +158,7 @@ export default function LiveTrackingView() {
           onClick={() => toggleMobilePanel('radar')}
           title="Toggle Overhead Radar"
         >
-          📡 RADAR
+          <HudIcon name="radar" /> RADAR
         </button>
         <button
           type="button"
@@ -143,7 +166,7 @@ export default function LiveTrackingView() {
           onClick={() => toggleMobilePanel('status')}
           title="Toggle Sensor Grid Status"
         >
-          ⚙ STATUS
+          <HudIcon name="status" /> STATUS
         </button>
       </div>
 
@@ -158,19 +181,19 @@ export default function LiveTrackingView() {
         }`}
       >
         <div className="tracking-view__panel-mobile-header">
-          <span>⌕ SATELLITE SEARCH & REGIMES</span>
+          <span><HudIcon name="search" /> SATELLITE SEARCH & REGIMES</span>
           <button
             type="button"
             className="tracking-view__panel-mobile-close"
             onClick={() => setMobilePanel('none')}
           >
-            ✕
+            <HudIcon name="close" />
           </button>
         </div>
 
         <div className="tracking-view__search-wrapper">
           <div className="tracking-view__search-box">
-            <span className="tracking-view__search-icon">⌕</span>
+            <span className="tracking-view__search-icon"><HudIcon name="search" /></span>
             <input
               type="text"
               className="tracking-view__search-input"
@@ -191,7 +214,7 @@ export default function LiveTrackingView() {
                 onClick={() => setSearchQuery('')}
                 title="Clear search filter"
               >
-                ✕
+                <HudIcon name="close" />
               </button>
             )}
           </div>
@@ -301,13 +324,13 @@ export default function LiveTrackingView() {
         }`}
       >
         <div className="tracking-view__panel-mobile-header">
-          <span>⚙ SENSOR & SGP4 STATUS</span>
+          <span><HudIcon name="status" /> SENSOR & SGP4 STATUS</span>
           <button
             type="button"
             className="tracking-view__panel-mobile-close"
             onClick={() => setMobilePanel('none')}
           >
-            ✕
+            <HudIcon name="close" />
           </button>
         </div>
         <div className="tracking-view__api-badge hud-text">
@@ -339,13 +362,13 @@ export default function LiveTrackingView() {
         }`}
       >
         <div className="tracking-view__panel-mobile-header">
-          <span>⚡ LIVE TELEMETRY</span>
+          <span><HudIcon name="telemetry" /> LIVE TELEMETRY</span>
           <button
             type="button"
             className="tracking-view__panel-mobile-close"
             onClick={() => setMobilePanel('none')}
           >
-            ✕
+            <HudIcon name="close" />
           </button>
         </div>
         <TelemetryReadout />
@@ -362,22 +385,16 @@ export default function LiveTrackingView() {
         }`}
       >
         <div className="tracking-view__panel-mobile-header">
-          <span>📡 ISTRAC RADAR HORIZON</span>
+          <span><HudIcon name="radar" /> ISTRAC RADAR HORIZON</span>
           <button
             type="button"
             className="tracking-view__panel-mobile-close"
             onClick={() => setMobilePanel('none')}
           >
-            ✕
+            <HudIcon name="close" />
           </button>
         </div>
-        <OverheadRadar
-          satellites={satellites}
-          onSelectSat={(sat) => {
-            setSelectedSat(sat)
-            if (isMobile) setMobilePanel('none')
-          }}
-        />
+        <OverheadRadar satellites={satellites} onSelectSat={handleSelectSatellite} />
       </div>
 
       {/* Mission dateline (item 8) — full-width timeline along the bottom edge */}
@@ -396,6 +413,11 @@ export default function LiveTrackingView() {
 
       {/* Floating Center-Bottom Tactical Quick-Action Pill (raised above the dateline) */}
       <div className="tracking-view__center-bottom-pill hud-text" style={{ bottom: 52 }}>
+        {/* Screen-reader announcements for selection state — 3D markers are pointer-only,
+            so the drawer/catalog keyboard paths are the input and this region is the output. */}
+        <span className="sr-only" aria-live="polite">
+          {selectedSat ? `Tracking ${selectedSat.name}` : 'No target selected — Earth overview'}
+        </span>
         {selectedSat ? (
           <div className="tracking-view__target-info">
             <span className="tracking-view__target-dot" style={{ background: selectedSat.color }} />
@@ -408,7 +430,7 @@ export default function LiveTrackingView() {
               }}
               title="Release camera lock and re-center the Earth"
             >
-              ⊙ CENTER EARTH
+              <HudIcon name="center" /> CENTER EARTH
             </button>
           </div>
         ) : (
@@ -419,7 +441,7 @@ export default function LiveTrackingView() {
             }}
             title="Recenter camera on Earth globe"
           >
-            ⊙ CENTER EARTH VIEW
+            <HudIcon name="center" /> CENTER EARTH VIEW
           </button>
         )}
       </div>
@@ -442,13 +464,17 @@ export default function LiveTrackingView() {
       {/* Slide-in Detailed Telemetry Drawer */}
       <SatelliteDetailDrawer />
 
-      {/* 3D Earth Loading Confirmation & Telemetry Verification HUD */}
-      <EarthLoadingConfirmation
-        isOpen={showConfirmModal}
-        totalSatellites={satellites.length}
-        onConfirm={handleConfirmEarth}
-        onClose={() => setShowConfirmModal(false)}
-      />
+      {/* 3D Earth Loading Confirmation & Telemetry Verification HUD — mounted
+          per open so every session starts from a fresh checklist/countdown
+          (a kept-alive HUD leaked the finished session into the next open) */}
+      {showConfirmModal && (
+        <EarthLoadingConfirmation
+          isOpen
+          totalSatellites={satellites.length}
+          onConfirm={handleConfirmEarth}
+          onClose={handleCloseConfirm}
+        />
+      )}
     </div>
   )
 }

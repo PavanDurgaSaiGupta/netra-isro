@@ -26,4 +26,5 @@ dist-ssr
 # ZCode workflow tooling (local only)
 .zcode/
 scratch/
+tests/e2e/verify/
 

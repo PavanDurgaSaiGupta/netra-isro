@@ -389,7 +389,7 @@ export default function LandingPageView() {
           <span className="hud-text">01 / EXPLORE THE CATALOG</span>
           <span className="mission-summary__card-sweep" aria-hidden="true" />
           <strong>
-            <OdometerNumber value={total || 14} />
+            <OdometerNumber value={total} />
             <small>modeled objects</small>
           </strong>
           <span>Search spacecraft and inspect orbital elements <span aria-hidden="true">↗</span></span>
@@ -398,7 +398,7 @@ export default function LandingPageView() {
           <span className="hud-text">02 / FOLLOW THE FLEET</span>
           <span className="mission-summary__card-sweep" aria-hidden="true" />
           <strong>
-            <OdometerNumber value={isroCount || 8} />
+            <OdometerNumber value={isroCount} />
             <small>Indian spacecraft</small>
           </strong>
           <span>Explore the globe from a new perspective <span aria-hidden="true">↗</span></span>
@@ -407,7 +407,7 @@ export default function LandingPageView() {
           <span className="hud-text">03 / UNDERSTAND THE ENVIRONMENT</span>
           <span className="mission-summary__card-sweep" aria-hidden="true" />
           <strong>
-            <OdometerNumber value={debrisCount || 4} />
+            <OdometerNumber value={debrisCount} />
             <small>debris examples</small>
           </strong>
           <span>Learn about orbital debris and illustrative risks <span aria-hidden="true">↗</span></span>
@@ -447,13 +447,13 @@ export default function LandingPageView() {
                 <div className="portal-card__chip">
                   <span className="portal-card__chip-label">ISRO ACTIVE FLEET:</span>
                   <span className="portal-card__chip-val" style={{ color: 'var(--status-active)' }}>
-                    {isroCount || 8} PAYLOADS
+                    {isroCount} PAYLOADS
                   </span>
                 </div>
                 <div className="portal-card__chip">
                   <span className="portal-card__chip-label">TRACKED DEBRIS:</span>
                   <span className="portal-card__chip-val" style={{ color: 'var(--status-warning)' }}>
-                    {debrisCount || 4} CRITICAL BODIES
+                    {debrisCount} CRITICAL BODIES
                   </span>
                 </div>
                 <div className="portal-card__chip">
@@ -477,7 +477,7 @@ export default function LandingPageView() {
                   to="/catalog"
                   className="portal-card__secondary-btn hud-text"
                 >
-                  BROWSE ALL {total || 14} SATELLITES →
+                  BROWSE ALL {total} SATELLITES →
                 </Link>
               </div>
             </div>

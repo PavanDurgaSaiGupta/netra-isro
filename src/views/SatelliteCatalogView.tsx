@@ -1,6 +1,8 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useSatellites } from '../context/SatelliteContext'
+import type { SatelliteItem } from '../services/satelliteData'
 import SatelliteDetailDrawer from '../components/console/SatelliteDetailDrawer'
+import HudIcon from '../components/HudIcon'
 import DataSkeleton from '../components/shell/DataSkeleton'
 import { DUR, EASE, gsap, prefersReducedMotion, stagger, useGSAP } from '../lib/motion'
 
@@ -37,7 +39,19 @@ export default function SatelliteCatalogView() {
     setFilterRegime,
     setSelectedSat,
     selectedSat,
+    triggerRecenter,
   } = useSatellites()
+
+  // Re-selecting the already-tracked satellite replays the camera fly-to
+  // (plain setSelectedSat is a no-op for the same object). Shared by the
+  // table rows and the card grid.
+  const selectSatellite = useCallback(
+    (sat: SatelliteItem) => {
+      if (selectedSat?.id === sat.id) triggerRecenter()
+      else setSelectedSat(sat)
+    },
+    [selectedSat, setSelectedSat, triggerRecenter],
+  )
 
   const [sortField, setSortField] = useState<SortField>('altKm')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -119,7 +133,7 @@ export default function SatelliteCatalogView() {
       {/* Control Strip */}
       <div className="catalog-view__toolbar">
         <div className="catalog-view__search-wrap">
-          <span className="catalog-view__search-icon">⌕</span>
+          <span className="catalog-view__search-icon"><HudIcon name="search" /></span>
           <input
             type="text"
             className="catalog-view__search-input hud-text"
@@ -139,7 +153,7 @@ export default function SatelliteCatalogView() {
                  right into the wrap's own 12px padding, never leftward over the input. */
               style={{ padding: '6px 16px 6px 0', margin: '-6px -16px -6px 0', minWidth: 24, minHeight: 24 }}
             >
-              ✕
+              <HudIcon name="close" />
             </button>
           )}
         </div>
@@ -217,12 +231,12 @@ export default function SatelliteCatalogView() {
                   aria-label={`${sat.name}, ${sat.orbitClass}, altitude ${sat.altKm.toFixed(1)} kilometers`}
                   className={`catalog-card ${isSelected ? 'catalog-card--selected' : ''}`}
                   onClick={() => {
-                    setSelectedSat(sat)
+                    selectSatellite(sat)
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      setSelectedSat(sat)
+                      selectSatellite(sat)
                     }
                   }}
                 >
@@ -280,7 +294,7 @@ export default function SatelliteCatalogView() {
                       className="catalog-card__btn u-link"
                       onClick={(e) => {
                         e.stopPropagation()
-                        setSelectedSat(sat)
+                        selectSatellite(sat)
                       }}
                       /* Hit-area fix (2.5.8): CSS padding 0 yields ~11px height */
                       style={{ minHeight: 24 }}
@@ -363,12 +377,12 @@ export default function SatelliteCatalogView() {
                       tabIndex={0}
                       aria-selected={isSelected}
                       onClick={() => {
-                        setSelectedSat(sat)
+                        selectSatellite(sat)
                       }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault()
-                          setSelectedSat(sat)
+                          selectSatellite(sat)
                         }
                       }}
                     >
@@ -409,7 +423,7 @@ export default function SatelliteCatalogView() {
                           className="catalog-table__inspect-btn u-link hud-text"
                           onClick={(e) => {
                             e.stopPropagation()
-                            setSelectedSat(sat)
+                            selectSatellite(sat)
                           }}
                           /* Hit-area fix (2.5.8): CSS padding 4px 8px yields ~19px height */
                           style={{ minHeight: 24 }}

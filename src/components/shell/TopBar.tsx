@@ -81,7 +81,23 @@ export default function TopBar({ mobileMenuOpen = false, onToggleMobileMenu }: T
         /* Hit-area floor (WCAG 2.2 AA 2.5.8); CSS padding already yields ~26px, this only guards it */
         style={{ minWidth: 24, minHeight: 24 }}
       >
-        <span className="app-topbar__hamburger-icon">{mobileMenuOpen ? '✕' : '☰'}</span>
+        <svg
+          className="app-topbar__hamburger-icon"
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          {mobileMenuOpen ? (
+            <path d="M5 5l14 14M19 5L5 19" />
+          ) : (
+            <path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17" />
+          )}
+        </svg>
         <span className="app-topbar__hamburger-text hud-text">MENU</span>
       </button>
 

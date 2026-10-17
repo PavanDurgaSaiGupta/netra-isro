@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import gsap from 'gsap'
+import { prefersReducedMotion } from '../../lib/motion'
 import { useSatellites } from '../../context/SatelliteContext'
 
 const RANDOM_EVENTS = [
@@ -34,9 +35,10 @@ export default function AlertsFeed({ maxLines = 8, showHeader = true, className 
     return () => clearInterval(timer)
   }, [addAlert])
 
-  // GSAP slide & fade in on newest row
+  // GSAP slide & fade in on newest row (skipped entirely under reduced motion —
+  // the new row simply appears)
   useEffect(() => {
-    if (!listRef.current) return
+    if (!listRef.current || prefersReducedMotion()) return
     const firstRow = listRef.current.querySelector('.alerts-feed__item:first-child')
     if (firstRow) {
       gsap.fromTo(

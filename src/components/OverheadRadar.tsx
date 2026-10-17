@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchLiveISS, type SatelliteItem } from '../services/satelliteData'
 import { fetchSubpointRegion } from '../services/issTrack'
+import HudIcon from './HudIcon'
 import {
   describeNextPass,
   formatCountdown,
@@ -218,7 +219,7 @@ export default function OverheadRadar({ satellites, onSelectSat }: Props) {
             >
               <div className="radar-widget__iss-header">
                 <span className="radar-widget__iss-live">◆ ISS (ZARYA) • LIVE STREAM</span>
-                <span className="radar-widget__iss-badge">⊙ LOCK ISS</span>
+                <span className="radar-widget__iss-badge"><HudIcon name="center" /> LOCK ISS</span>
               </div>
               <div className="radar-widget__iss-grid">
                 <div>ALT: {issData.altKm.toFixed(1)} km</div>
